@@ -104,7 +104,7 @@ test('protobuf field 26 can be extracted without a generated schema', () => {
     const nested = Buffer.from([0x08, 0x01, 0x12, 0x01, 0x78]);
     const encoded = Buffer.concat([
         Buffer.from([0x08, 0x01]),
-        Buffer.from([STICKER_AUDIO_TAG, nested.length]),
+        Buffer.from([0xd2, 0x01, nested.length]),
         nested,
         Buffer.from([0x10, 0x01])
     ]);
