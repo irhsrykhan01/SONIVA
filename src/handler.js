@@ -18,7 +18,7 @@ const {
     contextInfo
 } = require('./commands');
 const { probeMedia, createSoundStickerAssets } = require('./media');
-const { sendSoundSticker, stickerAlreadyHasAudio, stickerHash } = require('./protocol');
+const { sendSoundSticker, stickerAlreadyHasAudio, stickerHash } = require('./protocol');\nconst { handleGroupCommand, handleGroupMessage } = require('./group-features');
 
 function pendingKey(chat, sender) {
     return String(chat) + '|' + String(sender);
@@ -495,7 +495,7 @@ async function handleMessage(context, message) {
     const key = pendingKey(chat, sender);
 
     if (command) {
-        if (command.name === 'cancel' || command.name === 'batal') {
+        if (await handleGroupCommand({ sock: context.sock, database: context.database, config: context.config, message, command, sender: senderJidValue, owner })) return;\n\n        if (command.name === 'cancel' || command.name === 'batal') {
             const removed = clearPending(context, key);
             await sendText(
                 context.sock,
@@ -545,7 +545,7 @@ async function handleMessage(context, message) {
         }
     }
 
-    const pending = context.pending.get(key);
+    const messageText = require('./commands').extractText(message);\n    await handleGroupMessage({ sock: context.sock, database: context.database, message, sender: senderJidValue, owner, text: messageText });\n\n    const pending = context.pending.get(key);
     if (pending) {
         if (Date.now() - pending.createdAt > context.config.pendingTtlMs) {
             clearPending(context, key);
