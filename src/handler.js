@@ -496,7 +496,9 @@ async function handleMessage(context, message) {
     const key = pendingKey(chat, sender);
 
     if (command) {
-        if (await handleGroupCommand({ sock: context.sock, database: context.database, config: context.config, message, command, sender: senderJidValue, owner })) return;\n\n        if (command.name === 'cancel' || command.name === 'batal') {
+        if (await handleGroupCommand({ sock: context.sock, database: context.database, config: context.config, message, command, sender: senderJidValue, owner })) return;
+
+        if (command.name === 'cancel' || command.name === 'batal') {
             const removed = clearPending(context, key);
             await sendText(
                 context.sock,
