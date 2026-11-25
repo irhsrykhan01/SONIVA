@@ -46,7 +46,7 @@ async function startBot(config) {
             browser: ['SONIVA', 'Chrome', '1.0.0'],
             markOnlineOnConnect: true,
             syncFullHistory: false,
-            generateHighQualityLinkPreview: false
+            generateHighQualityLinkPreview: true
         });
 
         let reconnectScheduled = false;
