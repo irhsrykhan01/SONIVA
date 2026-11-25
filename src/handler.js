@@ -18,7 +18,8 @@ const {
     contextInfo
 } = require('./commands');
 const { probeMedia, createSoundStickerAssets } = require('./media');
-const { sendSoundSticker, stickerAlreadyHasAudio, stickerHash } = require('./protocol');\nconst { handleGroupCommand, handleGroupMessage } = require('./group-features');
+const { sendSoundSticker, stickerAlreadyHasAudio, stickerHash } = require('./protocol');
+const { handleGroupCommand, handleGroupMessage } = require('./group-features');
 
 function pendingKey(chat, sender) {
     return String(chat) + '|' + String(sender);
