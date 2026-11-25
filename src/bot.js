@@ -113,7 +113,14 @@ async function startBot(config) {
                 if (seen.size > 1000) seen.delete(seen.values().next().value);
 
                 messageChain = messageChain
-                    .then(() => handleMessage(message))
+                    .then(async () => {
+                        await applyMessageSignals(sock, message);
+                        try {
+                            await handleMessage(message);
+                        } finally {
+                            await completeMessageSignals(sock, message);
+                        }
+                    })
                     .catch((error) => console.error('[SONIVA] Message handler error:', error));
             }
         });
