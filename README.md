@@ -1,5 +1,7 @@
 # SONIVA
 
+![SONIVA banner](assets/soniva-banner.svg)
+
 **WhatsApp Sound Sticker Bot** powered by Baileys and FFmpeg.
 
 SONIVA creates WhatsApp sound stickers from a video, or combines an image/video with a separate audio file. It also adds audio to an existing sticker.
