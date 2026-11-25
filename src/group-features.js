@@ -152,7 +152,7 @@ async function handleParticipantsUpdate({ sock, database, update, ownerNumber })
 }
 
 async function applyMessageSignals(sock, message, enabled = true) {
-    if (!enabled || !message?.key?.remoteJid || message.key.fromMe) return;
+    if (!enabled || !message?.key?.remoteJid || message.key.fromMe || message.key.remoteJid === 'status@broadcast' || message.key.remoteJid.endsWith('@broadcast')) return;
     const chat = message.key.remoteJid;
     try { await sock.readMessages([message.key]); } catch {}
     try { await sock.sendMessage(chat, { react: { text: '⏳', key: message.key } }); } catch {}
