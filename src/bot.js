@@ -13,7 +13,8 @@ const {
 const { SonivaDatabase } = require('./database');
 const { assertMediaTools } = require('./media');
 const { installStickerAudioSupport } = require('./protocol');
-const { createMessageHandler } = require('./handler');\nconst { handleParticipantsUpdate, applyMessageSignals, completeMessageSignals } = require('./group-features');
+const { createMessageHandler } = require('./handler');
+const { handleParticipantsUpdate, applyMessageSignals, completeMessageSignals } = require('./group-features');
 
 async function startBot(config) {
     await assertMediaTools();
