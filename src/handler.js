@@ -539,14 +539,17 @@ async function handleMessage(context, message) {
                 '.limit — cek kuota harian.\n' +
                 '.cancel — batalkan sesi yang menunggu media.\n\n' +
                 'Free: ' + context.config.freeDailyLimit + '/hari | Premium: ' +
-                context.config.premiumDailyLimit + '/hari | Owner: unlimited.',
+                context.config.premiumDailyLimit + '/hari | Owner: unlimited.\\n' +\n                'Admin grup: .antilink/.antibot/.antispam/.welcome/.goodbye on|off.\\n' +\n                'Support: https://saweria.co/irhsrykhan',
                 message
             );
             return;
         }
     }
 
-    const messageText = require('./commands').extractText(message);\n    await handleGroupMessage({ sock: context.sock, database: context.database, message, sender: senderJidValue, owner, text: messageText });\n\n    const pending = context.pending.get(key);
+    const messageText = require('./commands').extractText(message);
+    await handleGroupMessage({ sock: context.sock, database: context.database, message, sender: senderJidValue, owner, text: messageText });
+
+    const pending = context.pending.get(key);
     if (pending) {
         if (Date.now() - pending.createdAt > context.config.pendingTtlMs) {
             clearPending(context, key);
