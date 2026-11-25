@@ -539,7 +539,9 @@ async function handleMessage(context, message) {
                 '.limit — cek kuota harian.\n' +
                 '.cancel — batalkan sesi yang menunggu media.\n\n' +
                 'Free: ' + context.config.freeDailyLimit + '/hari | Premium: ' +
-                context.config.premiumDailyLimit + '/hari | Owner: unlimited.\\n' +\n                'Admin grup: .antilink/.antibot/.antispam/.welcome/.goodbye on|off.\\n' +\n                'Support: https://saweria.co/irhsrykhan',
+                context.config.premiumDailyLimit + '/hari | Owner: unlimited.\n' +
+                'Admin grup: .antilink/.antibot/.antispam/.welcome/.goodbye on|off.\n' +
+                'Support: https://saweria.co/irhsrykhan',
                 message
             );
             return;
