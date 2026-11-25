@@ -75,7 +75,8 @@ async function startBot(config) {
             }
 
             if (connection === 'open') {
-                console.log('[SONIVA] Connected successfully.');\n                sock.sendPresenceUpdate('available').catch(() => {});
+                console.log('[SONIVA] Connected successfully.');
+                sock.sendPresenceUpdate('available').catch(() => {});
                 console.log('[SONIVA] Limits: Free ' + config.freeDailyLimit + '/day | Premium ' +
                     config.premiumDailyLimit + '/day | Owner unlimited.');
                 console.log('[SONIVA] Commands: .sticker, .addaudio, .limit, .help');
@@ -97,7 +98,11 @@ async function startBot(config) {
             }
         });
 
-        const handleMessage = createMessageHandler({ sock, config, database });\n        sock.ev.on('group-participants.update', (update) => {\n            handleParticipantsUpdate({ sock, database, update, ownerNumber: config.ownerNumber })\n                .catch(error => console.error('[SONIVA] Group participant handler error:', error.message));\n        });
+        const handleMessage = createMessageHandler({ sock, config, database });
+        sock.ev.on('group-participants.update', (update) => {
+            handleParticipantsUpdate({ sock, database, update, ownerNumber: config.ownerNumber })
+                .catch(error => console.error('[SONIVA] Group participant handler error:', error.message));
+        });
         sock.ev.on('messages.upsert', ({ messages, type }) => {
             if (type !== 'notify') return;
 
