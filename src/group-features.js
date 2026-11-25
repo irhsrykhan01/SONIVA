@@ -143,11 +143,25 @@ async function handleParticipantsUpdate({ sock, database, update, ownerNumber })
         }
     }
 
-    // Baileys does not provide a reliable universal bot-account flag in participant updates.
-    // Keep antibot fail-safe: never auto-kick a participant based on an unreliable guess.
-    if (database.getGroupFeature(chat, 'antibot')) {
-        const bot = (metadata.participants || []).find(p => isSelfJid(p.id, sock));
-        if (!bot) console.warn('[SONIVA] Antibot is ON but SONIVA is not present in group metadata:', chat);
+    // Only remove participants that the group metadata explicitly identifies as bots.
+    // Unknown accounts are never kicked based on guesses.
+    if (database.getGroupFeature(chat, 'antibot') && update.action === 'add') {
+        const added = (metadata.participants || []).filter(p =>
+            participants.some(jid => jid === p.id || jidNumber(jid) === jidNumber(p.id))
+        );
+        const botIsAdmin = (metadata.participants || []).some(p =>
+            isSelfJid(p.id, sock) && (p.admin === 'admin' || p.admin === 'superadmin')
+        );
+        for (const participant of added) {
+            const jid = participant.id;
+            const flaggedBot = participant.isBot === true || participant.bot === true;
+            const protectedAccount = isSelfJid(jid, sock) ||
+                jidNumber(jid) === String(ownerNumber || '') ||
+                participant.admin === 'admin' || participant.admin === 'superadmin';
+            if (flaggedBot && !protectedAccount && botIsAdmin) {
+                await sock.groupParticipantsUpdate(chat, [jid], 'remove').catch(() => {});
+            }
+        }
     }
 }
 
