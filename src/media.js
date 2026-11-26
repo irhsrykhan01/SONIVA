@@ -78,37 +78,84 @@ async function probeMedia(filePath) {
     };
 }
 
-const WATERMARK_TITLE = 'Soniva Bot';
-const WATERMARK_LINK = 'https://chat.whatsapp.com/Gu1elb8PoTJJp59RHpfvPp?s=cl&p=a&iam=2';
+const STICKER_PACK_NAME = 'Soniva Bot';
+const STICKER_PACK_PUBLISHER = 'https://chat.whatsapp.com/Gu1elb8PoTJJp59RHpfvPp?s=cl&p=a&iam=2';
 
-function escapeFilterPath(value) {
-    return String(value).replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'").replace(/,/g, '\\,');
+function buildStickerExif(packname = STICKER_PACK_NAME, publisher = STICKER_PACK_PUBLISHER) {
+    const data = JSON.stringify({
+        'sticker-pack-id': 'com.soniva.sticker',
+        'sticker-pack-name': String(packname).slice(0, 100),
+        'sticker-pack-publisher': String(publisher).slice(0, 100),
+        'emojis': [],
+        'android-app-store-link': '',
+        'ios-app-store-link': '',
+        'website': ''
+    });
+    const json = Buffer.from(data, 'utf8');
+    const header = Buffer.from([
+        0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00,
+        0x01, 0x00, 0x41, 0x57, 0x07, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x16, 0x00, 0x00, 0x00
+    ]);
+    const exif = Buffer.concat([header, json]);
+    exif.writeUInt32LE(json.length, 14);
+    return exif;
 }
 
-function createWatermarkFiles(workDir) {
-    const titlePath = path.join(workDir, 'soniva-watermark-title.txt');
-    const linkPath = path.join(workDir, 'soniva-watermark-link.txt');
-    fs.writeFileSync(titlePath, WATERMARK_TITLE, 'utf8');
-    fs.writeFileSync(linkPath, WATERMARK_LINK, 'utf8');
+function addStickerExif(webpBuffer, packname, publisher) {
+    const input = Buffer.from(webpBuffer);
+    if (input.length < 20 || input.toString('ascii', 0, 4) !== 'RIFF' ||
+        input.toString('ascii', 8, 12) !== 'WEBP') {
+        throw new Error('Generated sticker is not a valid RIFF/WebP file.');
+    }
 
-    const titleFile = escapeFilterPath(titlePath);
-    const linkFile = escapeFilterPath(linkPath);
-    const fonts = [
-        process.env.SONIVA_WATERMARK_FONT,
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-        '/usr/share/fonts/dejavu/DejaVuSans.ttf',
-        '/usr/share/fonts/TTF/DejaVuSans.ttf',
-        '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
-        '/data/data/com.termux/files/usr/share/fonts/DejaVuSans.ttf'
-    ].filter(Boolean);
-    const font = fonts.find(file => fs.existsSync(file));
-    const fontOption = font ? ":fontfile='" + escapeFilterPath(font) + "'" : ":font='Sans'";
+    const chunks = [];
+    let offset = 12;
+    let hasExtendedHeader = false;
+    while (offset + 8 <= input.length) {
+        const type = input.toString('ascii', offset, offset + 4);
+        const size = input.readUInt32LE(offset + 4);
+        const dataStart = offset + 8;
+        const dataEnd = dataStart + size;
+        const chunkEnd = dataEnd + (size & 1);
+        if (dataEnd > input.length || chunkEnd > input.length) {
+            throw new Error('Generated WebP contains a truncated chunk.');
+        }
+        if (type === 'VP8X') {
+            if (size < 10) throw new Error('Generated WebP has an invalid VP8X header.');
+            const chunk = Buffer.from(input.subarray(offset, chunkEnd));
+            chunk[dataStart - offset] |= 0x08;
+            chunks.push(chunk);
+            hasExtendedHeader = true;
+        } else if (type !== 'EXIF') {
+            chunks.push(Buffer.from(input.subarray(offset, chunkEnd)));
+        }
+        offset = chunkEnd;
+    }
+    if (offset !== input.length) throw new Error('Generated WebP has invalid chunk alignment.');
+    if (!hasExtendedHeader) {
+        throw new Error('Generated WebP has no VP8X metadata header; cannot safely attach sticker attribution.');
+    }
 
-    return [
-        'drawbox=x=0:y=ih-48:w=iw:h=48:color=black@0.58:t=fill',
-        "drawtext=textfile='" + titleFile + "'" + fontOption + ':fontcolor=white:fontsize=13:x=(w-text_w)/2:y=h-43',
-        "drawtext=textfile='" + linkFile + "'" + fontOption + ':fontcolor=white:fontsize=8:x=(w-text_w)/2:y=h-24'
-    ].join(',');
+    const exif = buildStickerExif(packname, publisher);
+    const exifChunk = Buffer.alloc(8 + exif.length + (exif.length & 1));
+    exifChunk.write('EXIF', 0, 'ascii');
+    exifChunk.writeUInt32LE(exif.length, 4);
+    exif.copy(exifChunk, 8);
+    const body = Buffer.concat([...chunks, exifChunk]);
+    const output = Buffer.alloc(12 + body.length);
+    output.write('RIFF', 0, 'ascii');
+    output.writeUInt32LE(body.length + 4, 4);
+    output.write('WEBP', 8, 'ascii');
+    body.copy(output, 12);
+    return output;
+}
+
+function addStickerExifFile(filePath) {
+    const original = fs.readFileSync(filePath);
+    const updated = addStickerExif(original);
+    fs.writeFileSync(filePath, updated);
+    return updated.length;
 }
 
 function fpsCandidates(sourceFps, duration) {
@@ -137,8 +184,7 @@ async function encodeAnimatedWebp(inputPath, outputPath, visualType, duration, m
 
                 const filter = 'fps=' + fps +
                     ',scale=512:512:force_original_aspect_ratio=decrease:flags=fast_bilinear' +
-                    ',format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000,' +
-                    createWatermarkFiles(path.dirname(outputPath));
+                    ',format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000';
 
                 args.push(
                     '-t', duration.toFixed(3), '-an', '-vf', filter,
@@ -216,6 +262,7 @@ async function createSoundStickerAssets(options) {
         ),
         encodeAudio(audioPath, oggPath, duration, audioBitrate)
     ]);
+    addStickerExifFile(webpPath);
 
     const finalAudioInfo = await probeMedia(oggPath);
     if (!finalAudioInfo.hasAudio || !fs.existsSync(oggPath) || fs.statSync(oggPath).size < 100) {
@@ -227,4 +274,4 @@ async function createSoundStickerAssets(options) {
     };
 }
 
-module.exports = { run, assertMediaTools, probeMedia, createSoundStickerAssets, fpsCandidates, createWatermarkFiles, WATERMARK_TITLE, WATERMARK_LINK };
+module.exports = { run, assertMediaTools, probeMedia, createSoundStickerAssets, fpsCandidates, buildStickerExif, addStickerExif, STICKER_PACK_NAME, STICKER_PACK_PUBLISHER };
