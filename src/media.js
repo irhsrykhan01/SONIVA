@@ -78,6 +78,39 @@ async function probeMedia(filePath) {
     };
 }
 
+const WATERMARK_TITLE = 'SONIVA BOT';
+const WATERMARK_LINK = 'https://chat.whatsapp.com/Gu1elb8PoTJJp59RHpfvPp?s=cl&p=a&iam=2';
+
+function escapeFilterPath(value) {
+    return String(value).replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'").replace(/,/g, '\\,');
+}
+
+function createWatermarkFiles(workDir) {
+    const titlePath = path.join(workDir, 'soniva-watermark-title.txt');
+    const linkPath = path.join(workDir, 'soniva-watermark-link.txt');
+    fs.writeFileSync(titlePath, WATERMARK_TITLE, 'utf8');
+    fs.writeFileSync(linkPath, WATERMARK_LINK, 'utf8');
+
+    const titleFile = escapeFilterPath(titlePath);
+    const linkFile = escapeFilterPath(linkPath);
+    const fonts = [
+        process.env.SONIVA_WATERMARK_FONT,
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/TTF/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
+        '/data/data/com.termux/files/usr/share/fonts/DejaVuSans.ttf'
+    ].filter(Boolean);
+    const font = fonts.find(file => fs.existsSync(file));
+    const fontOption = font ? ":fontfile='" + escapeFilterPath(font) + "'" : ":font='Sans'";
+
+    return [
+        'drawbox=x=0:y=ih-48:w=iw:h=48:color=black@0.58:t=fill',
+        "drawtext=textfile='" + titleFile + "'" + fontOption + ':fontcolor=white:fontsize=13:x=(w-text_w)/2:y=h-43',
+        "drawtext=textfile='" + linkFile + "'" + fontOption + ':fontcolor=white:fontsize=8:x=(w-text_w)/2:y=h-24'
+    ].join(',');
+}
+
 function fpsCandidates(sourceFps, duration) {
     // Keep the search small: repeated full video encodes are the main latency cost.
     const cap = Math.min(12, Math.max(8, Math.round(sourceFps || 12)));
@@ -104,7 +137,8 @@ async function encodeAnimatedWebp(inputPath, outputPath, visualType, duration, m
 
                 const filter = 'fps=' + fps +
                     ',scale=512:512:force_original_aspect_ratio=decrease:flags=fast_bilinear' +
-                    ',format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000';
+                    ',format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000,' +
+                    createWatermarkFiles(path.dirname(outputPath));
 
                 args.push(
                     '-t', duration.toFixed(3), '-an', '-vf', filter,
@@ -193,4 +227,4 @@ async function createSoundStickerAssets(options) {
     };
 }
 
-module.exports = { run, assertMediaTools, probeMedia, createSoundStickerAssets, fpsCandidates };
+module.exports = { run, assertMediaTools, probeMedia, createSoundStickerAssets, fpsCandidates, createWatermarkFiles, WATERMARK_TITLE, WATERMARK_LINK };
