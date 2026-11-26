@@ -55,7 +55,16 @@ async function handleGroupCommand({ sock, database, config, message, command, se
         await sock.sendMessage(chat, { text: 'Command ini hanya bisa digunakan di grup.' }, { quoted: message });
         return true;
     }
-    const status = await groupContext(sock, chat, sender);
+    let status;
+    try {
+        status = await groupContext(sock, chat, sender);
+    } catch (error) {
+        await sock.sendMessage(chat, {
+            text: 'SONIVA gagal memeriksa admin grup. Coba lagi sebentar.'
+        }, { quoted: message }).catch(() => {});
+        console.error('[SONIVA] Group admin check failed:', error.message);
+        return true;
+    }
     if (!owner && !status.actorAdmin) {
         await sock.sendMessage(chat, { text: 'Command ini khusus admin grup dan owner.' }, { quoted: message });
         return true;
@@ -69,8 +78,15 @@ async function handleGroupCommand({ sock, database, config, message, command, se
         return true;
     }
     await setFeature(database, chat, command.name, action === 'on');
+    let note = '';
+    if (action === 'on' && ['antilink', 'antispam', 'antibot'].includes(command.name) && !status.botAdmin) {
+        note = ' Bot harus dijadikan admin agar dapat menghapus pesan atau anggota.';
+    }
+    if (action === 'on' && command.name === 'antibot') {
+        note += ' Deteksi bot hanya berjalan jika metadata WhatsApp secara eksplisit memberi tanda bot.';
+    }
     await sock.sendMessage(chat, {
-        text: command.name + ' berhasil ' + (action === 'on' ? 'diaktifkan' : 'dinonaktifkan') + '.'
+        text: command.name + ' berhasil ' + (action === 'on' ? 'diaktifkan' : 'dinonaktifkan') + '.' + note
     }, { quoted: message });
     return true;
 }
@@ -127,43 +143,61 @@ async function handleParticipantsUpdate({ sock, database, update, ownerNumber })
     if (!isGroup(chat)) return;
     const participants = (update.participants || []).filter(jid => !isSelfJid(jid, sock));
     if (!participants.length) return;
-    const metadata = await sock.groupMetadata(chat).catch(() => null);
-    if (!metadata) return;
 
-    for (const jid of participants) {
-        const number = jidNumber(jid);
-        if (update.action === 'add' && database.getGroupFeature(chat, 'welcome')) {
+    const welcomeEnabled = update.action === 'add' && database.getGroupFeature(chat, 'welcome');
+    const goodbyeEnabled = ['remove', 'leave'].includes(update.action) && database.getGroupFeature(chat, 'goodbye');
+    const antibotEnabled = update.action === 'add' && database.getGroupFeature(chat, 'antibot');
+
+    if (welcomeEnabled) {
+        for (const jid of participants) {
             await sock.sendMessage(chat, {
-                text: 'Selamat datang @' + number + '! Semoga betah di grup ini.',
-                mentions: [jid]
-            }).catch(() => {});
-        }
-        if ((update.action === 'remove' || update.action === 'leave') && database.getGroupFeature(chat, 'goodbye')) {
-            await sock.sendMessage(chat, {
-                text: 'Sampai jumpa @' + number + '! Terima kasih sudah bergabung.',
+                text: 'Selamat datang @' + jidNumber(jid) + '! Semoga betah di grup ini.',
                 mentions: [jid]
             }).catch(() => {});
         }
     }
 
-    // Only remove participants that the group metadata explicitly identifies as bots.
-    // Unknown accounts are never kicked based on guesses.
-    if (database.getGroupFeature(chat, 'antibot') && update.action === 'add') {
-        const added = (metadata.participants || []).filter(p =>
-            participants.some(jid => jid === p.id || jidNumber(jid) === jidNumber(p.id))
-        );
-        const botIsAdmin = (metadata.participants || []).some(p =>
-            isSelfJid(p.id, sock) && (p.admin === 'admin' || p.admin === 'superadmin')
-        );
-        for (const participant of added) {
-            const jid = participant.id;
-            const flaggedBot = participant.isBot === true || participant.bot === true;
-            const protectedAccount = isSelfJid(jid, sock) ||
-                jidNumber(jid) === String(ownerNumber || '') ||
-                participant.admin === 'admin' || participant.admin === 'superadmin';
-            if (flaggedBot && !protectedAccount && botIsAdmin) {
-                await sock.groupParticipantsUpdate(chat, [jid], 'remove').catch(() => {});
-            }
+    if (goodbyeEnabled) {
+        for (const jid of participants) {
+            await sock.sendMessage(chat, {
+                text: 'Sampai jumpa @' + jidNumber(jid) + '! Terima kasih sudah bergabung.',
+                mentions: [jid]
+            }).catch(() => {});
+        }
+    }
+
+    if (!antibotEnabled) return;
+
+    const metadata = await sock.groupMetadata(chat).catch(() => null);
+    if (!metadata) {
+        console.warn('[SONIVA] Antibot could not read group metadata:', chat);
+        return;
+    }
+
+    // WhatsApp/Baileys does not consistently expose a bot identity flag.
+    // Remove only accounts explicitly marked as bots; never guess from names or behavior.
+    const added = (metadata.participants || []).filter(p =>
+        participants.some(jid => jid === p.id || jidNumber(jid) === jidNumber(p.id))
+    );
+    const botIsAdmin = (metadata.participants || []).some(p =>
+        isSelfJid(p.id, sock) && (p.admin === 'admin' || p.admin === 'superadmin')
+    );
+
+    if (!botIsAdmin) {
+        console.warn('[SONIVA] Antibot is enabled but SONIVA is not a group admin:', chat);
+        return;
+    }
+
+    for (const participant of added) {
+        const jid = participant.id;
+        const flaggedBot = participant.isBot === true || participant.bot === true;
+        const protectedAccount = isSelfJid(jid, sock) ||
+            jidNumber(jid) === String(ownerNumber || '') ||
+            participant.admin === 'admin' || participant.admin === 'superadmin';
+        if (flaggedBot && !protectedAccount) {
+            await sock.groupParticipantsUpdate(chat, [jid], 'remove').catch(error => {
+                console.warn('[SONIVA] Antibot could not remove flagged participant:', error.message);
+            });
         }
     }
 }
