@@ -78,7 +78,10 @@ async function handleGroupCommand({ sock, database, config, message, command, se
 async function handleGroupMessage({ sock, database, message, sender, owner, text }) {
     const chat = message.key.remoteJid;
     if (!isGroup(chat) || message.key.fromMe || owner || isSelfJid(sender, sock)) return;
-    const enabled = feature => database.getGroupFeature(chat, feature);
+    const activeFeatures = database.getEnabledGroupFeatures(chat);
+    if (!activeFeatures.length) return;
+
+    const enabled = feature => activeFeatures.includes(feature);
     const status = await groupContext(sock, chat, sender).catch(() => null);
     if (!status) return;
 
