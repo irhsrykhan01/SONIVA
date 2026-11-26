@@ -21,6 +21,10 @@ const { probeMedia, createSoundStickerAssets } = require('./media');
 const { sendSoundSticker, stickerAlreadyHasAudio, stickerHash } = require('./protocol');
 const { handleGroupCommand, handleGroupMessage } = require('./group-features');
 
+function isGroupChat(remoteJid) {
+    return typeof remoteJid === 'string' && remoteJid.endsWith('@g.us');
+}
+
 function pendingKey(chat, sender) {
     return String(chat) + '|' + String(sender);
 }
@@ -485,7 +489,8 @@ async function handleMessage(context, message) {
     if (!message?.message || !message.key?.remoteJid) return;
 
     const chat = message.key.remoteJid;
-    if (chat === 'status@broadcast' || chat.endsWith('@broadcast')) return;
+    // SONIVA only operates in groups. Ignore private chats and all broadcast JIDs silently.
+    if (!isGroupChat(chat)) return;
 
     const senderJidValue = senderJid(message, context.sock);
     const sender = normalizeUserId(senderJidValue);
@@ -585,4 +590,4 @@ function createMessageHandler(context) {
     return (message) => handleMessage(context, message);
 }
 
-module.exports = { createMessageHandler, handleMessage, pendingKey };
+module.exports = { createMessageHandler, handleMessage, pendingKey, isGroupChat };
