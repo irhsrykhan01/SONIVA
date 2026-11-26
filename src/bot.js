@@ -13,7 +13,7 @@ const {
 const { SonivaDatabase } = require('./database');
 const { assertMediaTools } = require('./media');
 const { installStickerAudioSupport } = require('./protocol');
-const { createMessageHandler } = require('./handler');
+const { createMessageHandler, isGroupChat } = require('./handler');
 const { parseCommand } = require('./commands');
 const { handleParticipantsUpdate, applyMessageSignals, completeMessageSignals } = require('./group-features');
 
@@ -108,6 +108,8 @@ async function startBot(config) {
             if (type !== 'notify') return;
 
             for (const message of messages || []) {
+                // Drop private/broadcast chats before read receipts, reactions, or command handling.
+                if (!isGroupChat(message?.key?.remoteJid)) continue;
                 const id = message?.key?.id;
                 if (!id || seen.has(id)) continue;
                 seen.add(id);
