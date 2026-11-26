@@ -20,20 +20,32 @@ const {
 const { SonivaDatabase, dateKey } = require('../src/database');
 const { extractBytesField, readVarint, STICKER_AUDIO_TAG } = require('../src/protocol');
 const { isGroupChat } = require('../src/handler');
-const { createWatermarkFiles, WATERMARK_TITLE, WATERMARK_LINK } = require('../src/media');
+const { buildStickerExif, addStickerExif, STICKER_PACK_NAME, STICKER_PACK_PUBLISHER } = require('../src/media');
 
-test('generated sticker watermark contains the SONIVA title and official group link', () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'soniva-watermark-test-'));
-    try {
-        const filters = createWatermarkFiles(directory);
-        assert.match(fs.readFileSync(path.join(directory, 'soniva-watermark-title.txt'), 'utf8'), /Soniva Bot/);
-        assert.equal(fs.readFileSync(path.join(directory, 'soniva-watermark-link.txt'), 'utf8'), WATERMARK_LINK);
-        assert.match(filters, /drawbox/);
-        assert.match(filters, /drawtext/);
-        assert.equal(WATERMARK_TITLE, 'Soniva Bot');
-    } finally {
-        fs.rmSync(directory, { recursive: true, force: true });
-    }
+test('sticker attribution is embedded as WhatsApp WebP EXIF metadata, not a visible overlay', () => {
+    const exif = buildStickerExif();
+    const json = exif.subarray(22).toString('utf8');
+    assert.equal(JSON.parse(json)['sticker-pack-name'], STICKER_PACK_NAME);
+    assert.equal(JSON.parse(json)['sticker-pack-publisher'], STICKER_PACK_PUBLISHER);
+
+    const vp8x = Buffer.alloc(18);
+    vp8x.write('VP8X', 0, 'ascii');
+    vp8x.writeUInt32LE(10, 4);
+    const imageHeader = Buffer.alloc(12);
+    imageHeader.write('RIFF', 0, 'ascii');
+    imageHeader.write('WEBP', 8, 'ascii');
+    const body = Buffer.concat([vp8x, imageHeader.subarray(0, 0)]);
+    const fixture = Buffer.concat([imageHeader, body]);
+    fixture.writeUInt32LE(fixture.length - 8, 4);
+
+    const output = addStickerExif(fixture);
+    assert.equal(output.toString('ascii', 0, 4), 'RIFF');
+    assert.equal(output.toString('ascii', 8, 12), 'WEBP');
+    assert.equal(output.readUInt32LE(4), output.length - 8);
+    assert.equal(output[20] & 0x08, 0x08);
+    assert.equal(output.toString('ascii').includes('Soniva Bot'), false);
+    assert.equal(output.toString('ascii').includes(STICKER_PACK_PUBLISHER), false);
+    assert.equal(output.toString('ascii').includes('EXIF'), true);
 });
 
 test('SONIVA only accepts group JIDs and silently ignores private or broadcast chats', () => {
