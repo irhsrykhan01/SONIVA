@@ -14,6 +14,7 @@ const { SonivaDatabase } = require('./database');
 const { assertMediaTools } = require('./media');
 const { installStickerAudioSupport } = require('./protocol');
 const { createMessageHandler } = require('./handler');
+const { parseCommand } = require('./commands');
 const { handleParticipantsUpdate, applyMessageSignals, completeMessageSignals } = require('./group-features');
 
 async function startBot(config) {
@@ -114,11 +115,12 @@ async function startBot(config) {
 
                 messageChain = messageChain
                     .then(async () => {
-                        await applyMessageSignals(sock, message);
+                        const isCommand = Boolean(parseCommand(message));
+                        await applyMessageSignals(sock, message, isCommand);
                         try {
                             await handleMessage(message);
                         } finally {
-                            await completeMessageSignals(sock, message);
+                            await completeMessageSignals(sock, message, isCommand);
                         }
                     })
                     .catch((error) => console.error('[SONIVA] Message handler error:', error));
