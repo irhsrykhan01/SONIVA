@@ -19,6 +19,15 @@ const {
 } = require('../src/commands');
 const { SonivaDatabase, dateKey } = require('../src/database');
 const { extractBytesField, readVarint, STICKER_AUDIO_TAG } = require('../src/protocol');
+const { isGroupChat } = require('../src/handler');
+
+test('SONIVA only accepts group JIDs and silently ignores private or broadcast chats', () => {
+    assert.equal(isGroupChat('120363000000000000@g.us'), true);
+    assert.equal(isGroupChat('628123456789@s.whatsapp.net'), false);
+    assert.equal(isGroupChat('123456789@lid'), false);
+    assert.equal(isGroupChat('status@broadcast'), false);
+    assert.equal(isGroupChat('123456789@broadcast'), false);
+});
 
 test('all sticker aliases parse as one command', () => {
     for (const alias of STICKER_ALIASES) {
