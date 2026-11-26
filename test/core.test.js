@@ -20,6 +20,21 @@ const {
 const { SonivaDatabase, dateKey } = require('../src/database');
 const { extractBytesField, readVarint, STICKER_AUDIO_TAG } = require('../src/protocol');
 const { isGroupChat } = require('../src/handler');
+const { createWatermarkFiles, WATERMARK_TITLE, WATERMARK_LINK } = require('../src/media');
+
+test('generated sticker watermark contains the SONIVA title and official group link', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'soniva-watermark-test-'));
+    try {
+        const filters = createWatermarkFiles(directory);
+        assert.match(fs.readFileSync(path.join(directory, 'soniva-watermark-title.txt'), 'utf8'), /SONIVA BOT/);
+        assert.equal(fs.readFileSync(path.join(directory, 'soniva-watermark-link.txt'), 'utf8'), WATERMARK_LINK);
+        assert.match(filters, /drawbox/);
+        assert.match(filters, /drawtext/);
+        assert.equal(WATERMARK_TITLE, 'SONIVA BOT');
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
 
 test('SONIVA only accepts group JIDs and silently ignores private or broadcast chats', () => {
     assert.equal(isGroupChat('120363000000000000@g.us'), true);
