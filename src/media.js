@@ -78,7 +78,7 @@ async function probeMedia(filePath) {
     };
 }
 
-const WATERMARK_TITLE = 'SONIVA BOT';
+const WATERMARK_TITLE = 'Soniva Bot';
 const WATERMARK_LINK = 'https://chat.whatsapp.com/Gu1elb8PoTJJp59RHpfvPp?s=cl&p=a&iam=2';
 
 function escapeFilterPath(value) {
