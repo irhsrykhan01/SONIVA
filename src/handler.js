@@ -532,20 +532,39 @@ async function handleMessage(context, message) {
         }
 
         if (command.name === 'menu' || command.name === 'help') {
-            await sendText(
-                context.sock,
-                chat,
-                'SONIVA — Sound Sticker Maker\n\n' +
-                '.sticker / .s / .sc / .stc / .stiker — buat Sound Sticker dari foto, video, dan audio.\n' +
-                '.addaudio — tambahkan audio ke stiker yang dibalas.\n' +
-                '.limit — cek kuota harian.\n' +
-                '.cancel — batalkan sesi yang menunggu media.\n\n' +
-                'Free: ' + context.config.freeDailyLimit + '/hari | Premium: ' +
-                context.config.premiumDailyLimit + '/hari | Owner: unlimited.\n' +
-                'Admin grup: .antilink/.antibot/.antispam/.welcome/.goodbye on|off.\n' +
-                'Support: https://saweria.co/irhsrykhan',
-                message
-            );
+            const access = accessFor(context, sender, owner);
+            const role = owner ? 'OWNER' : access.role.toUpperCase();
+            const used = owner ? 'UNLIMITED' : access.used + '/' + access.limit;
+            const mention = '@' + sender;
+            const menuText =
+                '╭─「 SONIVA 」\n' +
+                '│ Halo ' + mention + '\n' +
+                '│ Status  ' + role + '\n' +
+                '│ Limit   ' + used + '\n' +
+                '│ Total   12 Commands\n' +
+                '╰──────────────\n\n' +
+                '乂 STICKER MAKER\n' +
+                '│ .sticker\n' +
+                '│ .addaudio\n' +
+                '│ .cancel\n\n' +
+                '乂 USER MENU\n' +
+                '│ .limit\n' +
+                '│ .premium\n' +
+                '│ .menu\n\n' +
+                '乂 GROUP ADMIN\n' +
+                '│ .antilink on/off\n' +
+                '│ .antibot on/off\n' +
+                '│ .antispam on/off\n' +
+                '│ .welcome on/off\n' +
+                '│ .goodbye on/off\n\n' +
+                '乂 STICKER ALIASES\n' +
+                '│ .s  .sc  .stc  .stiker\n\n' +
+                '「 SONIVA 」\n' +
+                'Support  https://saweria.co/irhsrykhan';
+            await context.sock.sendMessage(chat, {
+                text: menuText,
+                mentions: [senderJidValue]
+            }, { quoted: message });
             return;
         }
     }
