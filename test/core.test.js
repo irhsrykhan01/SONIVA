@@ -26,11 +26,11 @@ test('generated sticker watermark contains the SONIVA title and official group l
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'soniva-watermark-test-'));
     try {
         const filters = createWatermarkFiles(directory);
-        assert.match(fs.readFileSync(path.join(directory, 'soniva-watermark-title.txt'), 'utf8'), /SONIVA BOT/);
+        assert.match(fs.readFileSync(path.join(directory, 'soniva-watermark-title.txt'), 'utf8'), /Soniva Bot/);
         assert.equal(fs.readFileSync(path.join(directory, 'soniva-watermark-link.txt'), 'utf8'), WATERMARK_LINK);
         assert.match(filters, /drawbox/);
         assert.match(filters, /drawtext/);
-        assert.equal(WATERMARK_TITLE, 'SONIVA BOT');
+        assert.equal(WATERMARK_TITLE, 'Soniva Bot');
     } finally {
         fs.rmSync(directory, { recursive: true, force: true });
     }
