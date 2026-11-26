@@ -1,5 +1,7 @@
 'use strict';
 
+const { rm } = require('node:fs/promises');
+
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const {
@@ -85,12 +87,25 @@ async function startBot(config) {
 
             if (connection === 'close' && !reconnectScheduled && !stopped) {
                 const status = lastDisconnect?.error?.output?.statusCode;
+                reconnectScheduled = true;
+
                 if (status === DisconnectReason.loggedOut) {
-                    console.error('[SONIVA] WhatsApp logged out. Remove the auth folder and link the device again.');
+                    console.warn('[SONIVA] WhatsApp session was logged out. Clearing only saved WhatsApp credentials...');
+                    try {
+                        await rm(config.authDir, { recursive: true, force: true });
+                    } catch (error) {
+                        console.error('[SONIVA] Could not clear the logged-out WhatsApp session:', error.message);
+                        return;
+                    }
+
+                    console.log('[SONIVA] Old session cleared. A fresh login screen will be generated shortly.');
+                    reconnectTimer = setTimeout(() => {
+                        connect().catch((error) => console.error('[SONIVA] Fresh login startup failed:', error));
+                    }, 2000);
+                    reconnectTimer.unref?.();
                     return;
                 }
 
-                reconnectScheduled = true;
                 console.warn('[SONIVA] Connection closed (code ' + (status ?? 'unknown') + '). Reconnecting in 5 seconds...');
                 reconnectTimer = setTimeout(() => {
                     connect().catch((error) => console.error('[SONIVA] Reconnect failed:', error));
