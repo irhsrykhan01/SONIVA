@@ -119,6 +119,27 @@ test('malformed protobuf data is rejected', () => {
     assert.throws(() => extractBytesField(Buffer.from([0xd2, 0x01, 0x05, 0x01]), 26));
 });
 
+test('group feature settings persist and are isolated per group', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'soniva-group-db-test-'));
+    const db = new SonivaDatabase(path.join(directory, 'test.sqlite'), 'Asia/Jakarta');
+
+    try {
+        assert.equal(db.getGroupFeature('111@g.us', 'antilink'), false);
+        db.setGroupFeature('111@g.us', 'antilink', true);
+        db.setGroupFeature('111@g.us', 'welcome', true);
+        assert.equal(db.getGroupFeature('111@g.us', 'antilink'), true);
+        assert.equal(db.getGroupFeature('111@g.us', 'welcome'), true);
+        assert.deepEqual(new Set(db.getEnabledGroupFeatures('111@g.us')), new Set(['antilink', 'welcome']));
+        assert.equal(db.getGroupFeature('222@g.us', 'antilink'), false);
+        db.setGroupFeature('111@g.us', 'antilink', false);
+        assert.equal(db.getGroupFeature('111@g.us', 'antilink'), false);
+        assert.throws(() => db.setGroupFeature('111@g.us', 'unknown', true));
+    } finally {
+        db.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test('daily limits, premium expiry, and owner unlimited access are enforced', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'soniva-db-test-'));
     const db = new SonivaDatabase(path.join(directory, 'test.sqlite'), 'Asia/Jakarta');
