@@ -557,8 +557,6 @@ async function handleMessage(context, message) {
                 '│ .antispam on/off\n' +
                 '│ .welcome on/off\n' +
                 '│ .goodbye on/off\n\n' +
-                '乂 STICKER ALIASES\n' +
-                '│ .s  .sc  .stc  .stiker\n\n' +
                 '「 SONIVA 」\n' +
                 'Support  https://saweria.co/irhsrykhan';
             await context.sock.sendMessage(chat, {
