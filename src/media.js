@@ -79,17 +79,18 @@ async function probeMedia(filePath) {
 }
 
 function fpsCandidates(sourceFps, duration) {
-    const cap = Math.min(20, Math.max(8, Math.round(sourceFps || 15)));
-    const ladder = [cap, 18, 15, 12, 10, 8]
-        .filter((fps, index, all) => fps <= cap && all.indexOf(fps) === index && fps * duration <= 200);
+    // Keep the search small: repeated full video encodes are the main latency cost.
+    const cap = Math.min(12, Math.max(8, Math.round(sourceFps || 12)));
+    const ladder = [cap, 10, 8]
+        .filter((fps, index, all) => fps <= cap && all.indexOf(fps) === index && fps * duration <= 150);
     return ladder.length ? ladder : [8];
 }
 
 async function encodeAnimatedWebp(inputPath, outputPath, visualType, duration, maxBytes, sourceFps = 15) {
     const fpsList = visualType === 'image' ? [12] : fpsCandidates(sourceFps, duration);
-    // Reduce quantization/quality before reducing frame rate. Keep a practical
-    // minimum of 8 fps so a sticker never silently degrades into a near-still image.
-    const qualities = [70, 60, 50, 42, 35, 30, 25];
+    // Bound the number of full encodes to avoid long waits on shared hosting.
+    // Keep at least 8 FPS and use three quality levels as predictable fallbacks.
+    const qualities = [58, 42, 30];
     let lastSize = 0;
     let lastError = null;
 
@@ -102,14 +103,14 @@ async function encodeAnimatedWebp(inputPath, outputPath, visualType, duration, m
                 else args.push('-i', inputPath);
 
                 const filter = 'fps=' + fps +
-                    ',scale=512:512:force_original_aspect_ratio=decrease:flags=lanczos' +
+                    ',scale=512:512:force_original_aspect_ratio=decrease:flags=fast_bilinear' +
                     ',format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000';
 
                 args.push(
                     '-t', duration.toFixed(3), '-an', '-vf', filter,
                     '-fps_mode', 'cfr',
                     '-c:v', 'libwebp', '-lossless', '0', '-q:v', String(quality),
-                    '-compression_level', '6', '-threads', '2',
+                    '-compression_level', '3', '-threads', '2',
                     '-loop', '0', '-f', 'webp', outputPath
                 );
                 await run('ffmpeg', args, 180000);
@@ -174,10 +175,13 @@ async function createSoundStickerAssets(options) {
 
     const webpPath = path.join(options.workDir, 'soniva-sticker.webp');
     const oggPath = path.join(options.workDir, 'soniva-audio.ogg');
-    const encoded = await encodeAnimatedWebp(
-        visualPath, webpPath, encodingType, duration, maxBytes, visualInfo?.fps || 15
-    );
-    await encodeAudio(audioPath, oggPath, duration, audioBitrate);
+    // The audio and visual tracks are independent; run their encoders together.
+    const [encoded] = await Promise.all([
+        encodeAnimatedWebp(
+            visualPath, webpPath, encodingType, duration, maxBytes, visualInfo?.fps || 12
+        ),
+        encodeAudio(audioPath, oggPath, duration, audioBitrate)
+    ]);
 
     const finalAudioInfo = await probeMedia(oggPath);
     if (!finalAudioInfo.hasAudio || !fs.existsSync(oggPath) || fs.statSync(oggPath).size < 100) {
