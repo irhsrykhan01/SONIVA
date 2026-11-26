@@ -165,15 +165,27 @@ async function handleParticipantsUpdate({ sock, database, update, ownerNumber })
     }
 }
 
-async function applyMessageSignals(sock, message, enabled = true) {
-    if (!enabled || !message?.key?.remoteJid || message.key.fromMe || message.key.remoteJid === 'status@broadcast' || message.key.remoteJid.endsWith('@broadcast')) return;
+async function applyMessageSignals(sock, message, isCommand = false) {
+    if (!message?.key?.remoteJid || message.key.fromMe ||
+        message.key.remoteJid === 'status@broadcast' ||
+        message.key.remoteJid.endsWith('@broadcast')) return;
+
     const chat = message.key.remoteJid;
+
+    // Read receipts remain independent from reactions.
     try { await sock.readMessages([message.key]); } catch {}
-    try { await sock.sendMessage(chat, { react: { text: '⏳', key: message.key } }); } catch {}
+
+    // Only command messages receive the processing reaction.
+    if (isCommand) {
+        try { await sock.sendMessage(chat, { react: { text: '⏳', key: message.key } }); } catch {}
+    }
 }
 
-async function completeMessageSignals(sock, message, enabled = true) {
-    if (!enabled || !message?.key?.remoteJid || message.key.fromMe) return;
+async function completeMessageSignals(sock, message, isCommand = false) {
+    if (!isCommand || !message?.key?.remoteJid || message.key.fromMe ||
+        message.key.remoteJid === 'status@broadcast' ||
+        message.key.remoteJid.endsWith('@broadcast')) return;
+
     try { await sock.sendMessage(message.key.remoteJid, { react: { text: '✅', key: message.key } }); } catch {}
 }
 
