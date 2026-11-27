@@ -232,8 +232,21 @@ async function sendSoundSticker(sock, chatJid, assets, quotedMessage) {
 
         const encodedMessage = proto.Message.encode(outgoing.message).finish();
         const encodedSticker = extractBytesField(encodedMessage, 26);
-        if (!encodedSticker || !encodedStickerHasAudio(encodedSticker)) {
-            throw new Error('Audio tidak ditemukan di dalam pesan akhir. Sticker tidak dikirim agar tidak menjadi stiker bisu.');
+        const embeddedAudioBytes = encodedSticker
+            ? extractBytesField(encodedSticker, STICKER_AUDIO_FIELD)
+            : null;
+        let embeddedAudio = null;
+        try {
+            if (embeddedAudioBytes?.length) {
+                embeddedAudio = proto.Message.AudioMessage.decode(embeddedAudioBytes);
+            }
+        } catch {
+            embeddedAudio = null;
+        }
+        if (!embeddedAudio?.url || !embeddedAudio?.mediaKey ||
+            !embeddedAudio?.directPath || !embeddedAudio?.fileSha256 ||
+            !embeddedAudio?.fileEncSha256) {
+            throw new Error('Metadata audio Sound Sticker tidak valid setelah encoding. Sticker tidak dikirim agar tidak menjadi stiker bisu.');
         }
 
         await sock.relayMessage(chatJid, outgoing.message, { messageId: outgoing.key.id });
