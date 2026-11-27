@@ -158,14 +158,16 @@ function addStickerExifFile(filePath) {
     return updated.length;
 }
 
+// Keep the sticker subject at the full 512px canvas size on every compression rung.
+// Reduce frame rate and WebP quality for size control, never the subject's displayed scale.
 const VIDEO_LADDER = Object.freeze([
     [15, 60, 512],
     [12, 50, 512],
-    [10, 45, 448],
-    [10, 35, 384],
-    [8, 30, 320],
-    [6, 25, 256],
-    [5, 20, 192]
+    [10, 45, 512],
+    [10, 35, 512],
+    [8, 30, 512],
+    [6, 25, 512],
+    [5, 20, 512]
 ]);
 
 const METADATA_RESERVE = 2048;
@@ -244,7 +246,7 @@ async function encodeAnimatedWebp(inputPath, outputPath, visualType, duration, m
     let lastError = null;
 
     if (imageInput) {
-        for (const [fps, quality, dimension] of [[12, 58, 512], [10, 42, 448], [8, 28, 384]]) {
+        for (const [fps, quality, dimension] of [[12, 58, 512], [10, 42, 512], [8, 28, 512]]) {
             attempts += 1;
             try {
                 await encodeWebpFile(inputPath, outputPath, fps, quality, dimension, duration, true);
