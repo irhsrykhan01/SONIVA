@@ -30,8 +30,6 @@ function loadConfig(env = process.env, root = process.cwd()) {
     const ownerNumber = String(env.SONIVA_OWNER || '').replace(/\D/g, '');
     return Object.freeze({
         ownerNumber,
-        freeDailyLimit: positiveInteger(env.FREE_DAILY_LIMIT, 5, 10000),
-        premiumDailyLimit: positiveInteger(env.PREMIUM_DAILY_LIMIT, 50, 10000),
         maxMediaBytes: positiveInteger(env.MAX_MEDIA_MB, 64, 200) * 1024 * 1024,
         maxStickerSeconds: positiveInteger(env.MAX_STICKER_SECONDS, 10, 60),
         maxStickerBytes: positiveInteger(env.MAX_STICKER_BYTES, 500000, 500000),

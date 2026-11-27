@@ -13,7 +13,7 @@ SONIVA creates WhatsApp sound stickers from a video, or combines an image/video 
 | `.sticker` | Start creating a sound sticker |
 | `.s`, `.sc`, `.stc`, `.stiker` | Aliases for `.sticker` |
 | `.addaudio` | Add audio to the sticker being replied to |
-| `.limit` | Check daily usage |
+| `.limit` | Confirm unlimited sticker creation |
 | `.cancel` | Cancel a media-waiting session |
 | `.help` | Show the command list |\n| `.antilink on/off` | Toggle link moderation in a group (admins/owner) |\n| `.antibot on/off` | Toggle fail-safe bot-account moderation (admins/owner) |\n| `.antispam on/off` | Toggle repeated-message detection (admins/owner) |\n| `.welcome on/off` | Toggle new-member greetings (admins/owner) |\n| `.goodbye on/off` | Toggle member-leave messages (admins/owner) |
 
@@ -29,25 +29,11 @@ Commands can be sent as a media caption or as a text reply to the media.
 
 SONIVA keeps each waiting session separate by chat and sender. A session expires after the configured waiting period. Use `.cancel` to cancel it earlier.
 
-## Group features\n\nGroup settings are stored in SQLite separately for each group. Only group admins or the configured owner can change them. The bot checks its own admin role before deleting messages or removing participants.\n\n- **Antilink:** removes messages containing external links, while allowing `saweria.co` and its subdomains so SONIVA's support link is not blocked. Group admins, the owner, and the bot itself are exempt. The bot must be a group admin to delete messages.\n- **Antispam:** detects the same text repeated four times within ten seconds. It does not automatically kick members.\n- **Antibot:** only removes a newly added participant when Baileys group metadata explicitly marks that participant with `isBot: true` or `bot: true`. WhatsApp does not expose a universal reliable bot flag, so unknown accounts are not kicked based on guesses. The bot itself, configured owner, and group admins are always protected.\n- **Welcome / goodbye:** sends a mention when members join or leave.\n\nMessage handling marks incoming messages as read, reacts with ⏳ while processing, then reacts with ✅ when the handler finishes. The bot advertises online presence after connecting. Saweria support is included in the help menu and high-quality link previews are enabled.\n\n## Usage limits
+## Group features\n\nGroup settings are stored in SQLite separately for each group. Only group admins or the configured owner can change them. The bot checks its own admin role before deleting messages or removing participants.\n\n- **Antilink:** removes messages containing external links, while allowing `saweria.co` and its subdomains so SONIVA's support link is not blocked. Group admins, the owner, and the bot itself are exempt. The bot must be a group admin to delete messages.\n- **Antispam:** detects the same text repeated four times within ten seconds. It does not automatically kick members.\n- **Antibot:** only removes a newly added participant when Baileys group metadata explicitly marks that participant with `isBot: true` or `bot: true`. WhatsApp does not expose a universal reliable bot flag, so unknown accounts are not kicked based on guesses. The bot itself, configured owner, and group admins are always protected.\n- **Welcome / goodbye:** sends a mention when members join or leave.\n\nMessage handling marks incoming messages as read, reacts with ⏳ while processing, then reacts with ✅ when the handler finishes. The bot advertises online presence after connecting. Saweria support is included in the help menu and high-quality link previews are enabled.\n\n## Access
 
-Default limits:
+SONIVA has no daily generation quota and no premium system. Every group member can create Sound Stickers without a usage cap. The `.limit` command simply confirms that sticker creation is unlimited.
 
-| Account | Daily creations |
-| --- | ---: |
-| Free | 5 |
-| Premium | 50 |
-| Owner | Unlimited |
-
-A successful generation consumes one use. Failed conversions and failed sends do not consume a use. Usage and premium expiry are stored in a local SQLite database.
-
-Owner-only premium management:
-
-- `.premium add 628xxxxxxxxxx 30` — grant 30 days (30 is the default).
-- `.premium remove 628xxxxxxxxxx` — remove premium.
-- `.premium list` — list active premium users.
-
-The owner number is configured locally through `SONIVA_OWNER`; it is never hardcoded into the source code. Premium durations can be set from 1 to 3650 days.
+The owner number is configured locally through `SONIVA_OWNER`; it is used only for owner-specific group administration privileges and is never hardcoded into the source code.
 
 ## Requirements
 
@@ -103,8 +89,6 @@ Edit `.env`, set `SONIVA_OWNER`, and run `npm start`.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `SONIVA_OWNER` | empty | Owner phone number, country code included, digits only |
-| `FREE_DAILY_LIMIT` | `5` | Daily limit for free users |
-| `PREMIUM_DAILY_LIMIT` | `50` | Daily limit for premium users |
 | `MAX_MEDIA_MB` | `64` | Maximum downloaded source file size |
 | `MAX_STICKER_SECONDS` | `10` | Maximum animation/audio duration |
 | `MAX_STICKER_BYTES` | `500000` | Maximum animated WebP size |
@@ -148,7 +132,7 @@ npm run check
 npm test
 ~~~
 
-The automated tests cover command parsing, media classification, quoted-message routing, owner identification, protobuf field extraction, daily quotas, and premium expiry. They do not replace an end-to-end test with a WhatsApp account that has Sound Sticker playback enabled.
+The automated tests cover command parsing, media classification, quoted-message routing, owner identification, protobuf field extraction, group feature settings and unlimited sticker access. They do not replace an end-to-end test with a WhatsApp account that has Sound Sticker playback enabled.
 
 ## Project status
 
