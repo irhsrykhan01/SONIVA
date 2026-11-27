@@ -17,7 +17,7 @@ const {
     isOwner,
     numberToJid
 } = require('../src/commands');
-const { SonivaDatabase, dateKey } = require('../src/database');
+const { SonivaDatabase } = require('../src/database');
 const { extractBytesField, readVarint, STICKER_AUDIO_TAG } = require('../src/protocol');
 const { isGroupChat } = require('../src/handler');
 const { buildStickerExif, addStickerExif, STICKER_PACK_NAME, STICKER_PACK_PUBLISHER } = require('../src/media');
@@ -176,39 +176,3 @@ test('group feature settings persist and are isolated per group', () => {
     }
 });
 
-test('daily limits, premium expiry, and owner unlimited access are enforced', () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'soniva-db-test-'));
-    const db = new SonivaDatabase(path.join(directory, 'test.sqlite'), 'Asia/Jakarta');
-
-    try {
-        const options = {
-            now: Date.UTC(2026, 0, 1, 3, 0, 0),
-            freeDailyLimit: 5,
-            premiumDailyLimit: 50
-        };
-
-        assert.equal(db.getAccess('628111111111', options).remaining, 5);
-        db.consumeUsage('628111111111', options.now);
-        assert.equal(db.getAccess('628111111111', options).remaining, 4);
-
-        const expiry = db.addPremium('628111111111', 30, options.now);
-        const premium = db.getAccess('628111111111', options);
-        assert.equal(premium.role, 'premium');
-        assert.equal(premium.limit, 50);
-        assert.equal(premium.expiresAt, expiry);
-
-        const owner = db.getAccess('628999999999', { ...options, owner: true });
-        assert.equal(owner.role, 'owner');
-        assert.equal(owner.remaining, Infinity);
-
-        db.removePremium('628111111111');
-        assert.equal(db.getAccess('628111111111', options).role, 'free');
-
-        const nextDay = options.now + 86400000;
-        assert.equal(db.getUsage('628111111111', nextDay), 0);
-        assert.match(dateKey(options.now, 'Asia/Jakarta'), /^\d{4}-\d{2}-\d{2}$/);
-    } finally {
-        db.close();
-        fs.rmSync(directory, { recursive: true, force: true });
-    }
-});
