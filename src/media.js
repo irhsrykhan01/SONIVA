@@ -159,52 +159,57 @@ function addStickerExifFile(filePath) {
 }
 
 function fpsCandidates(sourceFps, duration) {
-    // Keep the search small: repeated full video encodes are the main latency cost.
-    const cap = Math.min(12, Math.max(8, Math.round(sourceFps || 12)));
-    const ladder = [cap, 10, 8]
-        .filter((fps, index, all) => fps <= cap && all.indexOf(fps) === index && fps * duration <= 150);
-    return ladder.length ? ladder : [8];
+    const source = Math.min(15, Math.max(4, Math.round(sourceFps || 12)));
+    const candidates = [source, 12, 10, 8, 6, 5, 4]
+        .filter((fps, index, all) => fps <= source && all.indexOf(fps) === index && fps * duration <= 150);
+    return candidates.length ? candidates : [4];
 }
 
 async function encodeAnimatedWebp(inputPath, outputPath, visualType, duration, maxBytes, sourceFps = 15) {
     const fpsList = visualType === 'image' ? [12] : fpsCandidates(sourceFps, duration);
-    // Bound the number of full encodes to avoid long waits on shared hosting.
-    // Keep at least 8 FPS and use three quality levels as predictable fallbacks.
-    const qualities = [58, 42, 30];
+    const dimensions = visualType === 'image' ? [512, 448, 384] : [512, 416, 320, 256];
+    const qualities = [58, 40, 24];
     let lastSize = 0;
     let lastError = null;
+    let attempts = 0;
 
     for (const fps of fpsList) {
-        for (const quality of qualities) {
-            try {
-                fs.rmSync(outputPath, { force: true });
-                const args = ['-hide_banner', '-loglevel', 'error', '-y'];
-                if (visualType === 'image') args.push('-loop', '1', '-framerate', String(fps), '-i', inputPath);
-                else args.push('-i', inputPath);
+        for (const dimension of dimensions) {
+            for (const quality of qualities) {
+                attempts += 1;
+                try {
+                    fs.rmSync(outputPath, { force: true });
+                    const args = ['-hide_banner', '-loglevel', 'error', '-y'];
+                    if (visualType === 'image') args.push('-loop', '1', '-framerate', String(fps), '-i', inputPath);
+                    else args.push('-i', inputPath);
 
-                const filter = 'fps=' + fps +
-                    ',scale=512:512:force_original_aspect_ratio=decrease:flags=fast_bilinear' +
-                    ',format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000';
+                    const filter = 'fps=' + fps +
+                        ',scale=' + dimension + ':' + dimension +
+                        ':force_original_aspect_ratio=decrease:flags=lanczos' +
+                        ',format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000';
 
-                args.push(
-                    '-t', duration.toFixed(3), '-an', '-vf', filter,
-                    '-fps_mode', 'cfr',
-                    '-c:v', 'libwebp', '-lossless', '0', '-q:v', String(quality),
-                    '-compression_level', '3', '-threads', '2',
-                    '-loop', '0', '-f', 'webp', outputPath
-                );
-                await run('ffmpeg', args, 180000);
-                lastSize = fs.statSync(outputPath).size;
-                if (lastSize > 0 && lastSize <= maxBytes) {
-                    return { bytes: lastSize, fps, quality };
-                }
-            } catch (error) {
-                lastError = error;
-                if (error.message.includes('not found')) throw error;
-                // A WebP decoder error is an input/FFmpeg capability problem,
-                // not a file-size problem. Retrying lower quality cannot fix it.
-                if (/webp.*(decode|invalid)|Cannot determine format of input|Invalid data found/i.test(error.message)) {
-                    throw new Error('FFmpeg tidak dapat membaca stream WebP sumber. Periksa format media yang terunduh dan dukungan decoder WebP pada FFmpeg: ' + error.message);
+                    args.push(
+                        '-t', duration.toFixed(3), '-an', '-vf', filter,
+                        '-fps_mode', 'cfr',
+                        '-c:v', 'libwebp', '-lossless', '0', '-q:v', String(quality),
+                        '-compression_level', '6', '-threads', '2',
+                        '-loop', '0', '-f', 'webp', outputPath
+                    );
+                    await run('ffmpeg', args, 180000);
+                    if (!fs.existsSync(outputPath)) continue;
+
+                    // Sticker attribution metadata is part of the actual upload size.
+                    addStickerExifFile(outputPath);
+                    lastSize = fs.statSync(outputPath).size;
+                    if (lastSize > 0 && lastSize <= maxBytes) {
+                        return { bytes: lastSize, fps, quality, dimension, attempts };
+                    }
+                } catch (error) {
+                    lastError = error;
+                    if (error.message.includes('not found')) throw error;
+                    if (/webp.*(decode|invalid)|Cannot determine format of input|Invalid data found/i.test(error.message)) {
+                        throw new Error('FFmpeg tidak dapat membaca stream WebP sumber. Periksa format media yang terunduh dan dukungan decoder WebP pada FFmpeg: ' + error.message);
+                    }
                 }
             }
         }
@@ -213,10 +218,9 @@ async function encodeAnimatedWebp(inputPath, outputPath, visualType, duration, m
     if (lastError && !lastSize) throw new Error('Gagal membaca atau mengenkode media: ' + lastError.message);
     throw new Error(
         'Animasi masih melebihi batas ' + Math.ceil(maxBytes / 1024) +
-        ' KB setelah kompresi kualitas dan FPS (minimum 8 FPS). Coba video yang lebih singkat.'
+        ' KB setelah ' + attempts + ' percobaan kompresi adaptif (FPS, resolusi, dan kualitas). Coba potong durasi video atau gunakan video yang lebih sederhana.'
     );
 }
-
 async function encodeAudio(inputPath, outputPath, duration, audioBitrate) {
     await run('ffmpeg', [
         '-hide_banner', '-loglevel', 'error', '-y',
@@ -262,15 +266,13 @@ async function createSoundStickerAssets(options) {
         ),
         encodeAudio(audioPath, oggPath, duration, audioBitrate)
     ]);
-    addStickerExifFile(webpPath);
-
     const finalAudioInfo = await probeMedia(oggPath);
     if (!finalAudioInfo.hasAudio || !fs.existsSync(oggPath) || fs.statSync(oggPath).size < 100) {
         throw new Error('FFmpeg did not produce a valid Opus audio file.');
     }
     return {
         webpPath, oggPath, duration,
-        stickerBytes: encoded.bytes, fps: encoded.fps, quality: encoded.quality
+        stickerBytes: encoded.bytes, fps: encoded.fps, quality: encoded.quality, dimension: encoded.dimension, compressionAttempts: encoded.attempts
     };
 }
 

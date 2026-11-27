@@ -306,6 +306,8 @@ async function createStickerFromMessages(context, details) {
             ' | WebP=' + Math.ceil(assets.stickerBytes / 1024) + 'KB' +
             ' | fps=' + assets.fps +
             ' | quality=' + assets.quality +
+            ' | resolution=' + assets.dimension + 'px' +
+            ' | compressionAttempts=' + assets.compressionAttempts +
             ' | audio=' + (useVideoAudio ? 'video track' : 'separate audio')
         );
     } catch (error) {
