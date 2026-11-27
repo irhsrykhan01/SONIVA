@@ -87,6 +87,116 @@ async function downloadToFile(sock, message, filePath, config) {
     return buffer.length;
 }
 
+function parseChannelReference(value) {
+    const input = String(value || '').trim();
+    const match = input.match(/^https?:\\/\\/whatsapp\\.com\\/channel\\/([^/?#]+)/i);
+    if (match) return { type: 'invite', key: match[1] };
+    if (input.endsWith('@newsletter')) return { type: 'jid', key: input };
+    throw new Error('Masukkan link WhatsApp Channel atau JID yang berakhiran @newsletter.');
+}
+
+async function handleSetChannel(context, message, sender, command) {
+    const reference = command.args.join(' ').trim();
+    if (!reference) {
+        await sendText(context.sock, message.key.remoteJid, 'Cara pakai: .setchannel <link/JID Channel>', message);
+        return;
+    }
+
+    const parsed = parseChannelReference(reference);
+    if (typeof context.sock.newsletterMetadata !== 'function') {
+        throw new Error('Baileys pada versi ini belum menyediakan fitur metadata Channel.');
+    }
+
+    const metadata = await context.sock.newsletterMetadata(parsed.type, parsed.key);
+    if (!metadata?.id || !String(metadata.id).endsWith('@newsletter')) {
+        throw new Error('Metadata Channel tidak valid atau JID tidak ditemukan.');
+    }
+
+    const role = String(metadata.viewer_metadata?.role || '').toUpperCase();
+    if (role && !['ADMIN', 'OWNER'].includes(role)) {
+        throw new Error('Akun WhatsApp yang terhubung bukan admin Channel tersebut.');
+    }
+
+    context.database.setSavedChannel(sender, {
+        id: metadata.id,
+        name: metadata.name || metadata.thread_metadata?.name?.text || 'WhatsApp Channel'
+    });
+
+    await sendText(
+        context.sock,
+        message.key.remoteJid,
+        'Channel berhasil disimpan untuk akun ini.\\nNama: ' +
+            (metadata.name || metadata.thread_metadata?.name?.text || 'WhatsApp Channel') +
+            '\\nJID: ' + metadata.id +
+            '\\n\\nBalas pesan dengan .upch untuk mengirimkannya ke Channel.',
+        message
+    );
+}
+
+async function handleUpChannel(context, message, sender, command) {
+    const saved = context.database.getSavedChannel(sender);
+    if (!saved) {
+        await sendText(context.sock, message.key.remoteJid, 'Channel belum diatur. Gunakan .setchannel <link/JID Channel> terlebih dahulu.', message);
+        return;
+    }
+
+    if (typeof context.sock.sendMessage !== 'function') {
+        throw new Error('Pengiriman pesan tidak tersedia pada koneksi ini.');
+    }
+
+    const quoted = quotedMessage(message);
+    const text = command.args.join(' ').trim();
+
+    if (!quoted && !text) {
+        await sendText(context.sock, message.key.remoteJid, 'Balas pesan yang ingin dikirim dengan .upch, atau gunakan .upch <teks>.', message);
+        return;
+    }
+
+    if (quoted) {
+        const media = findMedia(quoted);
+        if (media?.kind === 'sticker' && stickerAlreadyHasAudio(media.payload, context.database)) {
+            if (typeof context.sock.relayMessage !== 'function') {
+                throw new Error('Baileys tidak menyediakan relayMessage untuk meneruskan Sound Sticker asli.');
+            }
+            const messageId = typeof context.sock.generateMessageTag === 'function'
+                ? context.sock.generateMessageTag()
+                : undefined;
+            await context.sock.relayMessage(saved.id, quoted.message, messageId ? { messageId } : {});
+        } else if (media) {
+            const data = await downloadMediaMessage(
+                quoted,
+                'buffer',
+                {},
+                {
+                    logger: pino({ level: 'silent' }),
+                    reuploadRequest: context.sock.updateMediaMessage
+                }
+            );
+            const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+            if (!buffer.length) throw new Error('Media yang dibalas kosong atau gagal diunduh.');
+            if (buffer.length > context.config.maxMediaBytes) {
+                throw new Error('Media melebihi batas ukuran SONIVA.');
+            }
+
+            let payload;
+            if (media.kind === 'image') payload = { image: buffer, ...(media.payload.caption ? { caption: media.payload.caption } : {}) };
+            else if (media.kind === 'video') payload = { video: buffer, ...(media.payload.caption ? { caption: media.payload.caption } : {}) };
+            else if (media.kind === 'audio') payload = { audio: buffer, mimetype: media.payload.mimetype || 'audio/ogg', ptt: Boolean(media.payload.ptt) };
+            else if (media.kind === 'sticker') payload = { sticker: buffer };
+            else payload = { document: buffer, mimetype: media.payload.mimetype || 'application/octet-stream', fileName: media.payload.fileName || 'file' };
+            await context.sock.sendMessage(saved.id, payload);
+        } else {
+            const quotedText = require('./commands').extractText(quoted);
+            if (!quotedText) throw new Error('Pesan yang dibalas tidak memiliki teks atau media yang didukung.');
+            await context.sock.sendMessage(saved.id, { text: quotedText });
+        }
+    } else {
+        await context.sock.sendMessage(saved.id, { text });
+    }
+
+    await sendText(context.sock, message.key.remoteJid, 'Berhasil mengirim pesan ke WhatsApp Channel: ' + saved.name, message);
+}
+
 async function handleLimit(context, message) {
     await sendText(
         context.sock,
@@ -380,6 +490,25 @@ async function handleMessage(context, message) {
 
     if (command) {
         if (await handleGroupCommand({ sock: context.sock, database: context.database, config: context.config, message, command, sender: senderJidValue, owner })) return;
+
+        if (command.name === 'setchannel' || command.name === 'setch') {
+            try {
+                await handleSetChannel(context, message, sender, command);
+            } catch (error) {
+                await sendText(context.sock, chat, 'Gagal menyimpan Channel: ' + error.message, message);
+            }
+            return;
+        }
+
+        if (command.name === 'upch' || command.name === 'uploadchannel' || command.name === 'upchannel') {
+            try {
+                await handleUpChannel(context, message, sender, command);
+            } catch (error) {
+                console.error('[SONIVA] Channel upload failed:', error);
+                await sendText(context.sock, chat, 'Gagal mengirim ke Channel: ' + error.message, message);
+            }
+            return;
+        }
 
         if (command.name === 'cancel' || command.name === 'batal') {
             const removed = clearPending(context, key);
