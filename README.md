@@ -94,7 +94,7 @@ Edit `.env`, set `SONIVA_OWNER`, and run `npm start`.
 | `MAX_STICKER_BYTES` | `500000` | Maximum animated WebP size |
 | `AUDIO_BITRATE` | `32k` | Opus output bitrate |
 | `MAX_PENDING_MINUTES` | `8` | How long SONIVA waits for the next media item |
-| `TIME_ZONE` | `Asia/Jakarta` | Time zone used for daily limit reset |
+| `TIME_ZONE` | `Asia/Jakarta` | Time zone used by date-sensitive group features |
 | `AUTH_DIR` | `auth_info` | Local Baileys credentials folder |
 | `DATABASE_PATH` | `.data/soniva.sqlite` | Local SQLite database path |
 | `PAIRING_NUMBER` | empty | Optional phone number for pairing-code login |
@@ -132,11 +132,11 @@ npm run check
 npm test
 ~~~
 
-The automated tests cover command parsing, media classification, quoted-message routing, owner identification, protobuf field extraction, group feature settings and unlimited sticker access. They do not replace an end-to-end test with a WhatsApp account that has Sound Sticker playback enabled.
+The automated tests cover command parsing, media classification, quoted-message routing, owner identification, protobuf field extraction and group feature settings. They do not replace an end-to-end test with a WhatsApp account that has Sound Sticker playback enabled.
 
 ## Project status
 
-**Early implementation / compatibility testing.** The code includes the planned command flows, media conversion, database-backed limits, and the Sound Sticker protobuf extension. Real-world delivery and playback must still be validated with a linked WhatsApp test account; WhatsApp's gradual rollout means that not every recipient can play Sound Stickers yet.
+**Early implementation / compatibility testing.** The code includes the planned command flows, media conversion, group settings, and the Sound Sticker protobuf extension. Real-world delivery and playback must still be validated with a linked WhatsApp test account; WhatsApp's gradual rollout means that not every recipient can play Sound Stickers yet.
 
 ## License
 
