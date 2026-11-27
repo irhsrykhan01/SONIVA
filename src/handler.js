@@ -194,8 +194,7 @@ async function createStickerFromMessages(context, details) {
         await sendText(
             context.sock,
             chat,
-            'SONIVA gagal membuat Sound Sticker: ' + error.message +
-            '',
+            'SONIVA gagal membuat Sound Sticker: ' + error.message,
             replyTo || visualMessage
         );
     } finally {
