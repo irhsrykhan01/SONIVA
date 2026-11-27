@@ -12,7 +12,7 @@ const {
     parseCommand,
     quotedMessage,
     senderJid,
-    isOwner,
+    isOwner
 } = require('./commands');
 const { probeMedia, createSoundStickerAssets } = require('./media');
 const { sendSoundSticker, stickerAlreadyHasAudio, stickerHash } = require('./protocol');
@@ -266,7 +266,6 @@ async function beginStickerCommand(context, message, sender, owner) {
 }
 
 async function beginAddAudioCommand(context, message, sender, owner) {
-    if (!(await requireAvailableLimit(context, message, sender, owner))) return;
 
     const quoted = quotedMessage(message);
     const sticker = quoted ? findMedia(quoted) : null;
