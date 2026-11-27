@@ -9,6 +9,8 @@ class SonivaDatabase {
         this.db = new (require('node:sqlite').DatabaseSync)(databasePath);
         this.db.exec('PRAGMA journal_mode = WAL;');
         this.db.exec('PRAGMA foreign_keys = ON;');
+        // Remove legacy quota and premium records from older SONIVA installations.
+        this.db.exec('DROP TABLE IF EXISTS daily_usage; DROP TABLE IF EXISTS premiums;');
         this.db.exec(
             'CREATE TABLE IF NOT EXISTS sound_stickers (' +
             'file_hash TEXT PRIMARY KEY, created_at INTEGER NOT NULL);'
