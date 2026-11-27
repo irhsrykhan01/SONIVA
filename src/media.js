@@ -158,47 +158,146 @@ function addStickerExifFile(filePath) {
     return updated.length;
 }
 
-function fpsCandidates(sourceFps, duration) {
-    const source = Math.min(15, Math.max(4, Math.round(sourceFps || 12)));
-    const candidates = [source, 12, 10, 8, 6, 5, 4]
-        .filter((fps, index, all) => fps <= source && all.indexOf(fps) === index && fps * duration <= 150);
-    return candidates.length ? candidates : [4];
+const VIDEO_LADDER = Object.freeze([
+    [15, 60, 512],
+    [12, 50, 512],
+    [10, 45, 448],
+    [10, 35, 384],
+    [8, 30, 320],
+    [6, 25, 256],
+    [5, 20, 192]
+]);
+
+const METADATA_RESERVE = 2048;
+const MAX_SAMPLE_ENCODINGS = 3;
+const MAX_FULL_ENCODINGS = 2;
+
+function stickerFilter(fps, dimension) {
+    return 'fps=' + fps +
+        ',scale=' + dimension + ':' + dimension +
+        ':force_original_aspect_ratio=decrease:flags=lanczos' +
+        ',format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000';
+}
+
+async function encodeWebpFile(inputPath, outputPath, fps, quality, dimension, duration, imageInput = false) {
+    fs.rmSync(outputPath, { force: true });
+    const args = ['-hide_banner', '-loglevel', 'error', '-y'];
+    if (imageInput) args.push('-loop', '1', '-framerate', String(fps), '-i', inputPath);
+    else args.push('-i', inputPath);
+    args.push(
+        '-t', duration.toFixed(3),
+        '-an', '-vf', stickerFilter(fps, dimension),
+        '-fps_mode', 'cfr',
+        '-c:v', 'libwebp', '-lossless', '0',
+        '-q:v', String(quality),
+        '-compression_level', '4',
+        '-threads', '2',
+        '-loop', '0', '-f', 'webp', outputPath
+    );
+    await run('ffmpeg', args, 120000);
+    if (!fs.existsSync(outputPath)) throw new Error('FFmpeg did not create a WebP output.');
+    return fs.statSync(outputPath).size;
+}
+
+async function createVideoIntermediate(inputPath, basePath, duration, sourceFps) {
+    const fps = Math.min(15, Math.max(8, Math.round(sourceFps || 15)));
+    await run('ffmpeg', [
+        '-hide_banner', '-loglevel', 'error', '-y',
+        '-t', duration.toFixed(3), '-i', inputPath,
+        '-map', '0:v:0', '-an', '-sn', '-dn',
+        '-vf', 'fps=' + fps +
+            ',scale=512:512:force_original_aspect_ratio=decrease:flags=lanczos' +
+            ',format=bgra,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=black@0',
+        '-c:v', 'ffv1', '-level', '3', '-pix_fmt', 'bgra',
+        basePath
+    ], 120000);
+    return fps;
+}
+
+async function createSample(inputPath, samplePath, duration, baseFps) {
+    const sampleDuration = Math.min(1.5, duration);
+    let select;
+    if (duration <= sampleDuration + 0.05) {
+        select = 'select=gte(t\\,0)';
+    } else {
+        const window = sampleDuration / 3;
+        const middle = Math.max(0, (duration - window) / 2);
+        const end = Math.max(0, duration - window);
+        select = "select='between(t,0," + window.toFixed(3) + ")+" +
+            'between(t,' + middle.toFixed(3) + ',' + (middle + window).toFixed(3) + ")+" +
+            'between(t,' + end.toFixed(3) + ',' + duration.toFixed(3) + ")'";
+    }
+    await run('ffmpeg', [
+        '-hide_banner', '-loglevel', 'error', '-y',
+        '-i', inputPath,
+        '-vf', select + ',setpts=N/(' + baseFps + '*TB)',
+        '-an', '-c:v', 'ffv1', '-level', '3', '-pix_fmt', 'bgra',
+        samplePath
+    ], 60000);
+    return sampleDuration;
 }
 
 async function encodeAnimatedWebp(inputPath, outputPath, visualType, duration, maxBytes, sourceFps = 15) {
-    const fpsList = visualType === 'image' ? [12] : fpsCandidates(sourceFps, duration);
-    const dimensions = visualType === 'image' ? [512, 448, 384] : [512, 416, 320, 256];
-    const qualities = [58, 40, 24];
+    const imageInput = visualType === 'image';
+    const targetBytes = Math.max(1, maxBytes - METADATA_RESERVE);
+    let attempts = 0;
     let lastSize = 0;
     let lastError = null;
-    let attempts = 0;
 
-    for (const fps of fpsList) {
-        for (const dimension of dimensions) {
-            for (const quality of qualities) {
+    if (imageInput) {
+        for (const [fps, quality, dimension] of [[12, 58, 512], [10, 42, 448], [8, 28, 384]]) {
+            attempts += 1;
+            try {
+                await encodeWebpFile(inputPath, outputPath, fps, quality, dimension, duration, true);
+                addStickerExifFile(outputPath);
+                lastSize = fs.statSync(outputPath).size;
+                if (lastSize <= maxBytes) return { bytes: lastSize, fps, quality, dimension, attempts };
+            } catch (error) {
+                lastError = error;
+                if (/not found/i.test(error.message)) throw error;
+            }
+        }
+    } else {
+        const basePath = path.join(path.dirname(outputPath), 'soniva-video-base.mkv');
+        const samplePath = path.join(path.dirname(outputPath), 'soniva-video-sample.mkv');
+        try {
+            const baseFps = await createVideoIntermediate(inputPath, basePath, duration, sourceFps);
+
+            // Very short clips usually fit without sampling; keep this path to one fast encode.
+            let selectedIndex = 0;
+            if (duration > 3) {
+                await createSample(basePath, samplePath, duration, baseFps);
+                const sampleDuration = Math.min(1.5, duration);
+                const sampleIndices = [0, 3, 6];
+                const measurements = [];
+                for (const index of sampleIndices) {
+                    const [fps, quality, dimension] = VIDEO_LADDER[index];
+                    const sampleOutput = outputPath + '.sample-' + index + '.webp';
+                    try {
+                        attempts += 1;
+                        const bytes = await encodeWebpFile(
+                            samplePath, sampleOutput, fps, quality, dimension, sampleDuration
+                        );
+                        measurements.push({ index, predicted: bytes * duration / sampleDuration });
+                    } finally {
+                        fs.rmSync(sampleOutput, { force: true });
+                    }
+                }
+                const fitting = measurements.filter(item => item.predicted <= targetBytes * 0.88);
+                selectedIndex = fitting.length
+                    ? Math.min(...fitting.map(item => item.index))
+                    : 6;
+            }
+
+            let fullEncodes = 0;
+            for (let index = selectedIndex;
+                index < VIDEO_LADDER.length && fullEncodes < MAX_FULL_ENCODINGS;
+                index++) {
+                const [fps, quality, dimension] = VIDEO_LADDER[index];
                 attempts += 1;
+                fullEncodes += 1;
                 try {
-                    fs.rmSync(outputPath, { force: true });
-                    const args = ['-hide_banner', '-loglevel', 'error', '-y'];
-                    if (visualType === 'image') args.push('-loop', '1', '-framerate', String(fps), '-i', inputPath);
-                    else args.push('-i', inputPath);
-
-                    const filter = 'fps=' + fps +
-                        ',scale=' + dimension + ':' + dimension +
-                        ':force_original_aspect_ratio=decrease:flags=lanczos' +
-                        ',format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000';
-
-                    args.push(
-                        '-t', duration.toFixed(3), '-an', '-vf', filter,
-                        '-fps_mode', 'cfr',
-                        '-c:v', 'libwebp', '-lossless', '0', '-q:v', String(quality),
-                        '-compression_level', '6', '-threads', '2',
-                        '-loop', '0', '-f', 'webp', outputPath
-                    );
-                    await run('ffmpeg', args, 180000);
-                    if (!fs.existsSync(outputPath)) continue;
-
-                    // Sticker attribution metadata is part of the actual upload size.
+                    await encodeWebpFile(basePath, outputPath, fps, quality, dimension, duration);
                     addStickerExifFile(outputPath);
                     lastSize = fs.statSync(outputPath).size;
                     if (lastSize > 0 && lastSize <= maxBytes) {
@@ -206,21 +305,23 @@ async function encodeAnimatedWebp(inputPath, outputPath, visualType, duration, m
                     }
                 } catch (error) {
                     lastError = error;
-                    if (error.message.includes('not found')) throw error;
-                    if (/webp.*(decode|invalid)|Cannot determine format of input|Invalid data found/i.test(error.message)) {
-                        throw new Error('FFmpeg tidak dapat membaca stream WebP sumber. Periksa format media yang terunduh dan dukungan decoder WebP pada FFmpeg: ' + error.message);
-                    }
+                    if (/not found/i.test(error.message)) throw error;
                 }
             }
+        } finally {
+            fs.rmSync(basePath, { force: true });
+            fs.rmSync(samplePath, { force: true });
         }
     }
 
     if (lastError && !lastSize) throw new Error('Gagal membaca atau mengenkode media: ' + lastError.message);
     throw new Error(
         'Animasi masih melebihi batas ' + Math.ceil(maxBytes / 1024) +
-        ' KB setelah ' + attempts + ' percobaan kompresi adaptif (FPS, resolusi, dan kualitas). Coba potong durasi video atau gunakan video yang lebih sederhana.'
+        ' KB setelah estimasi sampel dan maksimal ' + MAX_FULL_ENCODINGS +
+        ' encoding penuh. Coba potong durasi video atau gunakan video yang lebih sederhana.'
     );
 }
+
 async function encodeAudio(inputPath, outputPath, duration, audioBitrate) {
     await run('ffmpeg', [
         '-hide_banner', '-loglevel', 'error', '-y',
