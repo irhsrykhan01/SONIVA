@@ -12,10 +12,7 @@ const {
     parseCommand,
     quotedMessage,
     senderJid,
-    normalizeUserId,
     isOwner,
-    numberToJid,
-    contextInfo
 } = require('./commands');
 const { probeMedia, createSoundStickerAssets } = require('./media');
 const { sendSoundSticker, stickerAlreadyHasAudio, stickerHash } = require('./protocol');
@@ -32,28 +29,6 @@ function pendingKey(chat, sender) {
 function sendText(sock, chat, text, quoted) {
     const options = quoted ? { quoted } : {};
     return sock.sendMessage(chat, { text }, options);
-}
-
-function accessFor(context, sender, owner) {
-    return context.database.getAccess(sender, {
-        owner,
-        freeDailyLimit: context.config.freeDailyLimit,
-        premiumDailyLimit: context.config.premiumDailyLimit
-    });
-}
-
-async function requireAvailableLimit(context, message, sender, owner) {
-    const access = accessFor(context, sender, owner);
-    if (access.remaining > 0 || owner) return true;
-
-    await sendText(
-        context.sock,
-        message.key.remoteJid,
-        'Limit harian kamu sudah habis (' + access.used + '/' + access.limit + '). ' +
-        'Coba lagi setelah reset harian atau gunakan akses premium.',
-        message
-    );
-    return false;
 }
 
 function clearPending(context, key) {
@@ -112,95 +87,11 @@ async function downloadToFile(sock, message, filePath, config) {
     return buffer.length;
 }
 
-function accessLabel(access) {
-    if (access.role === 'owner') return 'Owner — unlimited';
-    return access.role.toUpperCase() + ' — ' + access.used + '/' + access.limit +
-        ' used, ' + access.remaining + ' remaining';
-}
-
-async function handleLimit(context, message, sender, owner) {
-    const access = accessFor(context, sender, owner);
-    const resetHint = 'Kuota direset setiap hari menurut zona waktu ' + context.config.timeZone + '.';
-    await sendText(context.sock, message.key.remoteJid, accessLabel(access) + '\n' + resetHint, message);
-}
-
-async function handlePremium(context, message, command, owner) {
-    if (!owner) {
-        await sendText(context.sock, message.key.remoteJid, 'Command ini khusus owner.', message);
-        return;
-    }
-
-    const action = (command.args[0] || '').toLowerCase();
-    if (action === 'list') {
-        const entries = context.database.listPremium();
-        if (!entries.length) {
-            await sendText(context.sock, message.key.remoteJid, 'Belum ada pengguna premium aktif.', message);
-            return;
-        }
-
-        const lines = entries.map((entry, index) => {
-            const expires = new Date(entry.expiresAt).toLocaleString('id-ID', {
-                timeZone: context.config.timeZone,
-                dateStyle: 'medium',
-                timeStyle: 'short'
-            });
-            return (index + 1) + '. ' + entry.userId + ' — sampai ' + expires;
-        });
-
-        await sendText(context.sock, message.key.remoteJid, 'Premium aktif:\n' + lines.join('\n'), message);
-        return;
-    }
-
-    const mentions = contextInfo(message)?.mentionedJid || [];
-    const numericTarget = command.args.slice(1).find((arg) => /^\+?\d{8,15}$/.test(arg));
-    const target = mentions[0]
-        ? normalizeUserId(mentions[0])
-        : normalizeUserId(numberToJid(numericTarget));
-
-    if (!target) {
-        await sendText(
-            context.sock,
-            message.key.remoteJid,
-            'Format owner:\n.premium add 628xxxxxxxxxx 30\n.premium remove 628xxxxxxxxxx\n.premium list\nKamu juga bisa mention pengguna.',
-            message
-        );
-        return;
-    }
-
-    if (action === 'add') {
-        const dayArgument = command.args.slice(1).map(Number)
-            .find((value) => Number.isInteger(value) && value >= 1 && value <= 3650);
-        const days = dayArgument || 30;
-        const expiresAt = context.database.addPremium(target, days);
-        const date = new Date(expiresAt).toLocaleString('id-ID', {
-            timeZone: context.config.timeZone,
-            dateStyle: 'medium',
-            timeStyle: 'short'
-        });
-        await sendText(
-            context.sock,
-            message.key.remoteJid,
-            'Premium berhasil diaktifkan untuk ' + target + ' selama ' + days + ' hari. Berakhir: ' + date,
-            message
-        );
-        return;
-    }
-
-    if (action === 'remove' || action === 'del' || action === 'delete') {
-        const removed = context.database.removePremium(target);
-        await sendText(
-            context.sock,
-            message.key.remoteJid,
-            removed ? 'Premium ' + target + ' berhasil dihapus.' : target + ' tidak memiliki premium aktif.',
-            message
-        );
-        return;
-    }
-
+async function handleLimit(context, message) {
     await sendText(
         context.sock,
         message.key.remoteJid,
-        'Format owner:\n.premium add 628xxxxxxxxxx 30\n.premium remove 628xxxxxxxxxx\n.premium list',
+        'SONIVA tidak menerapkan limit harian atau sistem premium. Semua pengguna dapat membuat Sound Sticker tanpa kuota.',
         message
     );
 }
@@ -233,17 +124,6 @@ async function createStickerFromMessages(context, details) {
         quotedMessage: replyTo,
         directVideo
     } = details;
-
-    const access = accessFor(context, sender, owner);
-    if (!owner && access.remaining <= 0) {
-        await sendText(
-            context.sock,
-            chat,
-            'Limit harian kamu sudah habis (' + access.used + '/' + access.limit + ').',
-            replyTo
-        );
-        return;
-    }
 
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'soniva-'));
     const visualInfo = findMedia(visualMessage);
@@ -298,7 +178,6 @@ async function createStickerFromMessages(context, details) {
         );
 
         context.database.rememberSoundSticker(sentHash);
-        if (!owner) context.database.consumeUsage(sender);
 
         console.log(
             '[SONIVA] Sound Sticker sent | user=' + sender +
@@ -316,7 +195,7 @@ async function createStickerFromMessages(context, details) {
             context.sock,
             chat,
             'SONIVA gagal membuat Sound Sticker: ' + error.message +
-            '\nLimit tidak dipotong karena proses belum berhasil.',
+            '',
             replyTo || visualMessage
         );
     } finally {
@@ -325,7 +204,6 @@ async function createStickerFromMessages(context, details) {
 }
 
 async function beginStickerCommand(context, message, sender, owner) {
-    if (!(await requireAvailableLimit(context, message, sender, owner))) return;
 
     const quoted = quotedMessage(message);
     const source = findMedia(message) ? message : quoted;
@@ -533,30 +411,22 @@ async function handleMessage(context, message) {
             return;
         }
 
-        if (command.name === 'premium') {
-            await handlePremium(context, message, command, owner);
-            return;
-        }
-
         if (command.name === 'menu' || command.name === 'help') {
-            const access = accessFor(context, sender, owner);
-            const role = owner ? 'OWNER' : access.role.toUpperCase();
-            const used = owner ? 'UNLIMITED' : access.used + '/' + access.limit;
+            const role = owner ? 'OWNER' : 'USER';
             const mention = '@' + sender;
             const menuText =
                 '╭─「 SONIVA 」\n' +
                 '│ Halo ' + mention + '\n' +
                 '│ Status  ' + role + '\n' +
-                '│ Limit   ' + used + '\n' +
-                '│ Total   12 Commands\n' +
+                '│ Limit   UNLIMITED\n' +
+                '│ Total   11 Commands\n' +
                 '╰──────────────\n\n' +
                 '乂 STICKER MAKER\n' +
                 '│ .sticker\n' +
                 '│ .addaudio\n' +
                 '│ .cancel\n\n' +
                 '乂 USER MENU\n' +
-                '│ .limit\n' +
-                '│ .premium\n' +
+                '│ .limit (no quota)\n' +
                 '│ .menu\n\n' +
                 '乂 GROUP ADMIN\n' +
                 '│ .antilink on/off\n' +
