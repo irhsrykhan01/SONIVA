@@ -169,7 +169,6 @@ const VIDEO_LADDER = Object.freeze([
 ]);
 
 const METADATA_RESERVE = 2048;
-const MAX_SAMPLE_ENCODINGS = 3;
 const MAX_FULL_ENCODINGS = 2;
 
 function stickerFilter(fps, dimension) {
