@@ -25,7 +25,7 @@ async function startBot(config) {
 
     const database = new SonivaDatabase(config.databasePath, config.timeZone);
     if (!config.ownerNumber) {
-        console.warn('[SONIVA] SONIVA_OWNER is empty. Owner-only commands and unlimited owner access are disabled.');
+        console.warn('[SONIVA] SONIVA_OWNER is empty. Owner-specific group administration privileges are disabled.');
     }
 
     let reconnectTimer = null;
