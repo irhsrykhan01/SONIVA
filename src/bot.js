@@ -80,8 +80,7 @@ async function startBot(config) {
             if (connection === 'open') {
                 console.log('[SONIVA] Connected successfully.');
                 sock.sendPresenceUpdate('available').catch(() => {});
-                console.log('[SONIVA] Limits: Free ' + config.freeDailyLimit + '/day | Premium ' +
-                    config.premiumDailyLimit + '/day | Owner unlimited.');
+                console.log('[SONIVA] Sticker creation: unlimited for all users; no premium tiers.');
                 console.log('[SONIVA] Commands: .sticker, .addaudio, .limit, .help');
             }
 
