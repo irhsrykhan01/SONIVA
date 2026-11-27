@@ -376,4 +376,4 @@ async function createSoundStickerAssets(options) {
     };
 }
 
-module.exports = { run, assertMediaTools, probeMedia, createSoundStickerAssets, fpsCandidates, buildStickerExif, addStickerExif, STICKER_PACK_NAME, STICKER_PACK_PUBLISHER };
+module.exports = { run, assertMediaTools, probeMedia, createSoundStickerAssets, buildStickerExif, addStickerExif, STICKER_PACK_NAME, STICKER_PACK_PUBLISHER };
