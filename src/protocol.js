@@ -87,18 +87,39 @@ function unregisterStickerAudio(fileSha256) {
 function installStickerAudioSupport(baileysProto = proto) {
     const StickerMessage = baileysProto?.Message?.StickerMessage;
     const AudioMessage = baileysProto?.Message?.AudioMessage;
-    if (!StickerMessage?.encode || !StickerMessage?.decode || !AudioMessage?.decode) {
-        throw new Error('This Baileys build does not expose the expected sticker/audio protobuf types.');
+    if (!StickerMessage?.fromObject || !StickerMessage?.encode ||
+        !StickerMessage?.decode || !StickerMessage?.toObject ||
+        !AudioMessage?.fromObject || !AudioMessage?.encode ||
+        !AudioMessage?.decode || !AudioMessage?.toObject) {
+        throw new Error('This Baileys build does not expose the expected sticker/audio protobuf methods.');
+    }
+
+    // StickerMessage field 26 is an unassigned length-delimited extension in the
+    // pinned Baileys 7.0.0-rc14 schema. Do not reuse field 23 (mediaKeyDomain).
+    if (!StickerMessage.fromObject[ENCODE_PATCH]) {
+        const originalFromObject = StickerMessage.fromObject;
+        const patchedFromObject = function (object) {
+            const sticker = originalFromObject.call(this, object);
+            if (object?.audioMessage != null) {
+                sticker.audioMessage = AudioMessage.fromObject(object.audioMessage);
+            }
+            return sticker;
+        };
+        patchedFromObject[ENCODE_PATCH] = true;
+        StickerMessage.fromObject = patchedFromObject;
     }
 
     if (!StickerMessage.encode[ENCODE_PATCH]) {
         const originalEncode = StickerMessage.encode;
         const patchedEncode = function (message, writer) {
             const result = originalEncode.call(this, message, writer);
-            if (message?.fileSha256) {
-                const audioBytes = pendingAudio.get(hashKey(message.fileSha256));
-                if (audioBytes) result.uint32(STICKER_AUDIO_TAG).bytes(audioBytes);
+            let audioBytes = null;
+            if (message?.audioMessage != null) {
+                audioBytes = AudioMessage.encode(message.audioMessage).finish();
+            } else if (message?.fileSha256) {
+                audioBytes = pendingAudio.get(hashKey(message.fileSha256)) || null;
             }
+            if (audioBytes?.length) result.uint32(STICKER_AUDIO_TAG).bytes(audioBytes);
             return result;
         };
         patchedEncode[ENCODE_PATCH] = true;
@@ -116,13 +137,26 @@ function installStickerAudioSupport(baileysProto = proto) {
                     const audioBytes = extractBytesField(raw, STICKER_AUDIO_FIELD);
                     if (audioBytes) decoded.audioMessage = AudioMessage.decode(audioBytes);
                 } catch {
-                    // Leave the regular sticker readable if an extension is malformed.
+                    // Keep the sticker readable when an unknown extension is malformed.
                 }
             }
             return decoded;
         };
         patchedDecode[DECODE_PATCH] = true;
         StickerMessage.decode = patchedDecode;
+    }
+
+    if (!StickerMessage.toObject[ENCODE_PATCH]) {
+        const originalToObject = StickerMessage.toObject;
+        const patchedToObject = function (message, options) {
+            const object = originalToObject.call(this, message, options);
+            if (message?.audioMessage != null) {
+                object.audioMessage = AudioMessage.toObject(message.audioMessage, options);
+            }
+            return object;
+        };
+        patchedToObject[ENCODE_PATCH] = true;
+        StickerMessage.toObject = patchedToObject;
     }
 }
 
