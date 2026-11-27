@@ -4,10 +4,16 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+    proto
+} = require('@whiskeysockets/baileys');
+const {
     readVarint,
     extractBytesField,
-    encodedStickerHasAudio
+    encodedStickerHasAudio,
+    installStickerAudioSupport
 } = require('../src/protocol');
+
+installStickerAudioSupport(proto);
 
 function encodeVarint(value) {
     let number = BigInt(value);
@@ -63,3 +69,32 @@ test('extractBytesField rejects truncated protobuf payloads', () => {
 test('readVarint rejects truncated input', () => {
     assert.throws(() => readVarint(Buffer.from([0x80]), 0), /Unexpected end/);
 });
+test('StickerMessage preserves embedded AudioMessage through fromObject, encode, decode and toObject', () => {
+    const sticker = proto.Message.StickerMessage.fromObject({
+        url: 'https://example.invalid/sticker.webp',
+        mimetype: 'image/webp',
+        mediaKeyDomain: 0,
+        audioMessage: {
+            url: 'https://example.invalid/audio.ogg',
+            mimetype: 'audio/ogg; codecs=opus',
+            seconds: 3,
+            ptt: true,
+            mediaKey: Buffer.alloc(32, 1),
+            fileSha256: Buffer.alloc(32, 2),
+            fileEncSha256: Buffer.alloc(32, 3),
+            directPath: '/v/t62.7117-24/test'
+        }
+    });
+
+    const encoded = proto.Message.StickerMessage.encode(sticker).finish();
+    assert.equal(encodedStickerHasAudio(encoded), true);
+
+    const decoded = proto.Message.StickerMessage.decode(encoded);
+    assert.equal(decoded.audioMessage.url, 'https://example.invalid/audio.ogg');
+    assert.equal(decoded.audioMessage.mimetype, 'audio/ogg; codecs=opus');
+
+    const object = proto.Message.StickerMessage.toObject(decoded, { bytes: Buffer });
+    assert.equal(object.audioMessage.url, 'https://example.invalid/audio.ogg');
+    assert.equal(object.mediaKeyDomain, 0);
+});
+
