@@ -125,10 +125,10 @@ async function handleSetChannel(context, message, sender, command) {
     await sendText(
         context.sock,
         message.key.remoteJid,
-        'Channel berhasil disimpan untuk akun ini.\\nNama: ' +
+        'Channel berhasil disimpan untuk akun ini.\nNama: ' +
             (metadata.name || metadata.thread_metadata?.name?.text || 'WhatsApp Channel') +
-            '\\nJID: ' + metadata.id +
-            '\\n\\nBalas pesan dengan .upch untuk mengirimkannya ke Channel.',
+            '\nJID: ' + metadata.id +
+            '\n\nBalas pesan dengan .upch untuk mengirimkannya ke Channel.',
         message
     );
 }
