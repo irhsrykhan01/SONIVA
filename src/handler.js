@@ -89,7 +89,7 @@ async function downloadToFile(sock, message, filePath, config) {
 
 function parseChannelReference(value) {
     const input = String(value || '').trim();
-    const match = input.match(/^https?:\\/\\/whatsapp\\.com\\/channel\\/([^/?#]+)/i);
+    const match = input.match(/^https?:\/\/whatsapp\.com\/channel\/([^/?#]+)/i);
     if (match) return { type: 'invite', key: match[1] };
     if (input.endsWith('@newsletter')) return { type: 'jid', key: input };
     throw new Error('Masukkan link WhatsApp Channel atau JID yang berakhiran @newsletter.');
