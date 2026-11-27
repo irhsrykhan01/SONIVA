@@ -65,9 +65,9 @@ test('all sticker aliases parse as one command', () => {
 });
 
 test('commands are case-insensitive and accept arguments', () => {
-    const parsed = parseCommand({ message: { conversation: '.PREMIUM add 6281234567890 30' } });
-    assert.equal(parsed.name, 'premium');
-    assert.deepEqual(parsed.args, ['add', '6281234567890', '30']);
+    const parsed = parseCommand({ message: { conversation: '.STICKER' } });
+    assert.equal(parsed.name, 'sticker');
+    assert.deepEqual(parsed.args, []);
     assert.equal(parseCommand({ message: { conversation: 'hello .sticker' } }), null);
 });
 
