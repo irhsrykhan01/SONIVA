@@ -16,6 +16,10 @@ class SonivaDatabase {
             'file_hash TEXT PRIMARY KEY, created_at INTEGER NOT NULL);'
         );
         this.db.exec(
+            'CREATE TABLE IF NOT EXISTS channel_settings (' +
+            'user_id TEXT PRIMARY KEY, channel_jid TEXT NOT NULL, channel_name TEXT NOT NULL, updated_at INTEGER NOT NULL);'
+        );
+        this.db.exec(
             'CREATE TABLE IF NOT EXISTS group_features (' +
             'chat_id TEXT NOT NULL, feature TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, ' +
             'updated_at INTEGER NOT NULL, PRIMARY KEY (chat_id, feature));'
@@ -43,6 +47,23 @@ class SonivaDatabase {
         return this.db.prepare(
             'SELECT feature FROM group_features WHERE chat_id = ? AND enabled = 1'
         ).all(String(chatId)).map(row => row.feature);
+    }
+
+    getSavedChannel(userId) {
+        return this.db.prepare(
+            'SELECT channel_jid AS id, channel_name AS name FROM channel_settings WHERE user_id = ?'
+        ).get(String(userId)) || null;
+    }
+
+    setSavedChannel(userId, metadata) {
+        if (!metadata?.id || !String(metadata.id).endsWith('@newsletter')) {
+            throw new Error('Invalid WhatsApp Channel JID.');
+        }
+        this.db.prepare(
+            'INSERT INTO channel_settings (user_id, channel_jid, channel_name, updated_at) VALUES (?, ?, ?, ?) ' +
+            'ON CONFLICT(user_id) DO UPDATE SET channel_jid = excluded.channel_jid, channel_name = excluded.channel_name, updated_at = excluded.updated_at'
+        ).run(String(userId), String(metadata.id), String(metadata.name || 'WhatsApp Channel'), Date.now());
+        return this.getSavedChannel(userId);
     }
 
     rememberSoundSticker(fileHash, now = Date.now()) {
